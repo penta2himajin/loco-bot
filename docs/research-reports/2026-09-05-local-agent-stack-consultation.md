@@ -184,6 +184,7 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 - Defaults: `continue_min`/`return_min` = **0.78**, `new_max` = **0.50** (`S1Thresholds::granite_calibrated`).
 - S1 now returns `S1Outcome::Gray` instead of silent New; S2 (`GraySafetyS2`) clarifies close mid-pasts or chooses New — no soft-Return on weak scores.
 - ONNX fixture `onnx_new_with_past` covers multipast New (the case empty-past was dodging).
+- GraySafetyS2 `clarify_min` = **0.735** (between hard-negatives ~0.71–0.73 and return_min 0.78): dual hard-negatives → New; near-floor ambiguous ~0.74+ → Clarify. Extra ONNX New cases: baseball/tax/two-pasts.
 - LFM spikes (`scripts/eval_s2/`): Encoder Prompt-Router **2/6**, generative LFM2.5-350M **2/6** on JA S2 cases — **not adopted** (Return/Continue biases). Needle2 rejected earlier (no multilingual claim); NLI out of scope.
 - Deferred: Prompt-Router fine-tune, cross-encoder, text-only pack.
 

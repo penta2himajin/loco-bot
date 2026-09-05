@@ -25,12 +25,13 @@ pub enum S2Decision {
 
 /// Safety-net S2 used by default in the CLI.
 ///
-/// - Does **not** soft-Return on mid scores (granite hard-negatives live ~0.71–0.73).
-/// - If two past chunks are both moderately strong and close → clarify.
-/// - Otherwise → New (clean topic split).
+/// Measured against granite-97m (2026-09-06):
+/// - Hard-negative multipast New scores ≈0.71–0.73 → must stay **New**
+/// - Near-floor ambiguous pairs ≈0.74–0.78 → **Clarify**
+/// - Never soft-Return below `S1Thresholds::return_min` (0.78)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GraySafetyS2 {
-    /// Both top past scores must be ≥ this to trigger clarify.
+    /// Both top past scores must be ≥ this (just under return_min) to clarify.
     pub clarify_min: f32,
     /// Top-2 past gap below this → ambiguous.
     pub ambiguity_delta: f32,
@@ -39,7 +40,8 @@ pub struct GraySafetyS2 {
 impl Default for GraySafetyS2 {
     fn default() -> Self {
         Self {
-            clarify_min: 0.60,
+            // Below return_min (0.78), above typical hard-negative pairs (~0.71–0.73).
+            clarify_min: 0.735,
             ambiguity_delta: 0.05,
         }
     }
@@ -89,13 +91,26 @@ mod tests {
     }
 
     #[test]
-    fn gray_safety_clarifies_close_mid_pasts() {
+    fn gray_safety_new_when_dual_past_below_clarify_floor() {
+        // Multipast New (quantum vs curry+weather): ~0.73 / ~0.72.
+        let mut s2 = GraySafetyS2::default();
+        let ev = GrayEvidence {
+            current_sim: 0.69,
+            best_past_index: Some(0),
+            best_past_sim: 0.733,
+            past_ranked: vec![(0, 0.733), (1, 0.723)],
+        };
+        assert_eq!(s2.decide_gray(&ev), S2Decision::New);
+    }
+
+    #[test]
+    fn gray_safety_clarifies_close_near_return_floor() {
         let mut s2 = GraySafetyS2::default();
         let ev = GrayEvidence {
             current_sim: 0.74,
             best_past_index: Some(0),
-            best_past_sim: 0.745,
-            past_ranked: vec![(0, 0.745), (1, 0.738)],
+            best_past_sim: 0.746,
+            past_ranked: vec![(0, 0.746), (1, 0.738)],
         };
         assert_eq!(s2.decide_gray(&ev), S2Decision::ClarifyPast);
     }
