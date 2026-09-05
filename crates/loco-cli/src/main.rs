@@ -11,14 +11,18 @@ use loco_engine::{
     install_model_file, model_fully_ready, model_status, with_session_notes, CacheLayout,
     InferenceBackend, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT, GRANITE_97M,
 };
-use loco_memory::{compile, CompilerConfig, SessionMemory, TopicSwitch};
+use loco_memory::{
+    compile, CompilerConfig, PendingCandidate, PendingClarification, SessionMemory, TopicSwitch,
+};
 
 #[cfg(feature = "inference")]
 use loco_engine::ChatSession;
 
 #[cfg(feature = "embed")]
 use loco_embed::{
-    decide_s1, expand_query, ChunkScore, GraniteEmbedder, S1Thresholds, TopicDecision,
+    expand_query, match_clarification, resolve_topic, ChunkScore, Clarification, ClarifyAction,
+    ClarifyCandidate, GraniteEmbedder, ResolveInput, ResolveOutcome, S1Thresholds,
+    DEFAULT_AMBIGUITY_DELTA,
 };
 
 #[derive(Debug, Parser)]
@@ -209,6 +213,12 @@ fn cmd_memory(layout: &CacheLayout, action: MemoryCmd) -> Result<()> {
             println!("chunks: {}", mem.chunks.len());
             if let Some(i) = mem.current_chunk {
                 println!("current_chunk: {i}");
+            }
+            if let Some(i) = mem.previous_chunk {
+                println!("previous_chunk: {i}");
+            }
+            if mem.pending_clarify.is_some() {
+                println!("pending_clarify: yes");
             }
             for (i, c) in mem.chunks.iter().enumerate() {
                 println!(
@@ -457,7 +467,16 @@ fn chat_reply(
         #[cfg(feature = "embed")]
         {
             if let Some(emb) = embedder.as_mut() {
-                apply_s1(emb, memory, text)?
+                match apply_resolve(emb, memory, text)? {
+                    ResolveApply::Clarify(question) => {
+                        // Persist the clarifying turn; skip E4B.
+                        return Ok(question);
+                    }
+                    ResolveApply::Ack(msg) => {
+                        return Ok(msg);
+                    }
+                    ResolveApply::Switch(sw) => sw,
+                }
             } else {
                 TopicSwitch::Continue
             }
@@ -469,9 +488,7 @@ fn chat_reply(
     };
 
     let cfg = match switch {
-        // Return needs the archived chunk turns; include a short recent window too.
         TopicSwitch::Return { .. } => CompilerConfig::default(),
-        // Live Conversation already holds recent turns — keep notes compact.
         TopicSwitch::Continue | TopicSwitch::New => CompilerConfig {
             recent_turn_window: 0,
             ..CompilerConfig::default()
@@ -497,6 +514,13 @@ fn chat_reply(
     session.reply(&payload).context("generate reply")
 }
 
+#[cfg(feature = "embed")]
+enum ResolveApply {
+    Switch(TopicSwitch),
+    Clarify(String),
+    Ack(String),
+}
+
 #[cfg(all(feature = "inference", feature = "embed"))]
 fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<GraniteEmbedder> {
     if disabled {
@@ -519,11 +543,35 @@ fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<GraniteEmbedder
 }
 
 #[cfg(feature = "embed")]
-fn apply_s1(
+fn apply_resolve(
     embedder: &mut GraniteEmbedder,
     memory: &mut SessionMemory,
     user: &str,
-) -> Result<TopicSwitch> {
+) -> Result<ResolveApply> {
+    // Complete a pending clarification first.
+    if let Some(pending) = memory.pending_clarify.clone() {
+        let clarification = pending_to_clarification(&pending);
+        if let Some(action) = match_clarification(user, &clarification) {
+            let label = clarification
+                .candidates
+                .iter()
+                .find(|c| c.action == action)
+                .map(|c| c.label.as_str())
+                .unwrap_or("selected");
+            let switch = apply_clarify_action(memory, action);
+            memory.clear_pending_clarify();
+            eprintln!("[topic: clarify → {switch:?}]");
+            if is_bare_clarify_reply(user, &pending) {
+                return Ok(ResolveApply::Ack(format!(
+                    "了解です。「{label}」に戻ります。続けてどうぞ。"
+                )));
+            }
+            return Ok(ResolveApply::Switch(switch));
+        }
+        eprintln!("[topic: clarify (re-ask)]");
+        return Ok(ResolveApply::Clarify(pending.question));
+    }
+
     let expanded = expand_query(user, memory.last_user());
     let query = embedder
         .embed(&expanded)
@@ -541,23 +589,95 @@ fn apply_s1(
         })
         .collect();
     let current = memory.current_embedding().map(|e| e.to_vec());
-    let decision = decide_s1(&query, current.as_deref(), &past, &S1Thresholds::default());
-    let switch = match decision {
-        TopicDecision::Continue => {
+    let labels = memory.chunk_labels();
+    let outcome = resolve_topic(&ResolveInput {
+        user,
+        query_emb: &query,
+        current: current.as_deref(),
+        past: &past,
+        previous_chunk: memory.previous_chunk,
+        chunk_labels: &labels,
+        thresholds: S1Thresholds::default(),
+        ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
+    });
+
+    Ok(match outcome {
+        ResolveOutcome::Continue => {
             eprintln!("[topic: continue]");
-            TopicSwitch::Continue
+            ResolveApply::Switch(TopicSwitch::Continue)
         }
-        TopicDecision::New => {
+        ResolveOutcome::New => {
             let preview: String = user.chars().take(80).collect();
             let idx = memory.open_chunk(preview, query);
             eprintln!("[topic: new #{idx}]");
-            TopicSwitch::New
+            ResolveApply::Switch(TopicSwitch::New)
         }
-        TopicDecision::Return { chunk_index } => {
+        ResolveOutcome::Return { chunk_index } => {
             memory.return_to_chunk(chunk_index);
             eprintln!("[topic: return #{chunk_index}]");
+            ResolveApply::Switch(TopicSwitch::Return { chunk_index })
+        }
+        ResolveOutcome::NeedsClarification(c) => {
+            eprintln!("[topic: clarify]");
+            memory.set_pending_clarify(clarification_to_pending(&c));
+            ResolveApply::Clarify(c.question)
+        }
+    })
+}
+
+#[cfg(feature = "embed")]
+fn apply_clarify_action(memory: &mut SessionMemory, action: ClarifyAction) -> TopicSwitch {
+    match action {
+        ClarifyAction::ContinueCurrent => TopicSwitch::Continue,
+        ClarifyAction::ReturnTo { chunk_index } => {
+            memory.return_to_chunk(chunk_index);
             TopicSwitch::Return { chunk_index }
         }
-    };
-    Ok(switch)
+    }
+}
+
+#[cfg(feature = "embed")]
+fn is_bare_clarify_reply(user: &str, pending: &PendingClarification) -> bool {
+    let t = user.trim();
+    t.parse::<usize>().is_ok()
+        || pending
+            .candidates
+            .iter()
+            .any(|c| c.label.eq_ignore_ascii_case(t))
+}
+
+#[cfg(feature = "embed")]
+fn clarification_to_pending(c: &Clarification) -> PendingClarification {
+    PendingClarification {
+        question: c.question.clone(),
+        candidates: c
+            .candidates
+            .iter()
+            .map(|x| PendingCandidate {
+                label: x.label.clone(),
+                return_chunk: match x.action {
+                    ClarifyAction::ContinueCurrent => None,
+                    ClarifyAction::ReturnTo { chunk_index } => Some(chunk_index),
+                },
+            })
+            .collect(),
+    }
+}
+
+#[cfg(feature = "embed")]
+fn pending_to_clarification(p: &PendingClarification) -> Clarification {
+    Clarification {
+        question: p.question.clone(),
+        candidates: p
+            .candidates
+            .iter()
+            .map(|x| ClarifyCandidate {
+                label: x.label.clone(),
+                action: match x.return_chunk {
+                    None => ClarifyAction::ContinueCurrent,
+                    Some(chunk_index) => ClarifyAction::ReturnTo { chunk_index },
+                },
+            })
+            .collect(),
+    }
 }

@@ -46,9 +46,10 @@ cargo run -p loco-cli -- memory clear
 ```
 
 Session memory stores turns, a rolling summary, and S1 topic chunks under the cache
-(`…/memory/session.json`). Each chat turn runs S1 (when granite is cached), then a
-thin context compiler injects resident notes and — on topic return — the returned
-chunk’s turns (`[context: resident(+dynamic)]`). Use `--no-memory` or `--no-topic`
+(`…/memory/session.json`). Each chat turn runs S1/deixis resolve (when granite is cached), then a thin context
+compiler injects resident notes and — on topic return — the returned chunk’s turns
+(`[context: resident(+dynamic)]`). Underspecified returns like「さっきの話」use the
+previous topic; ambiguous cases ask which topic. Use `--no-memory` or `--no-topic`
 to disable.
 
 Cache default: platform cache dir `/loco-bot/models/…` (override with `--cache-dir` or `LOCO_CACHE_DIR`).

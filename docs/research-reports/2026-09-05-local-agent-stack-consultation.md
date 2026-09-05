@@ -158,6 +158,14 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 - CLI injects compiled notes in-band every turn (`[context: resident(+dynamic) N chars]`). Continue/New omit the recent-turn dump (Conversation already has it); Return includes dynamic + a short recent window.
 - Next: P5 small tool surface.
 
+## P4.1 deixis resolve (2026-09-05)
+
+- Lexicon deixis classes: Plain / ContinueHint / ReturnNamed / ReturnUnspecified.
+- Unspecified return ("さっきの話") uses `previous_chunk` (topic stack N-1); if missing and multiple past chunks → ask which topic.
+- Named return still uses granite S1; close top-2 past scores → clarify.
+- Continue deixis expands with the previous user turn only.
+- Verified: `さっきの話` → return#0+dynamic; `それについて` → continue; seeded ambiguous → clarify → `2` ack.
+
 ## References
 
 - LiteRT-LM: https://github.com/google-ai-edge/LiteRT-LM

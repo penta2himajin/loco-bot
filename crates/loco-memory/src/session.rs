@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::chunk::TopicChunk;
+use crate::pending::PendingClarification;
 use crate::summary::simple_summary;
 use crate::turn::Turn;
 
@@ -34,6 +35,12 @@ pub struct SessionMemory {
     /// Index into `chunks` for the active topic.
     #[serde(default)]
     pub current_chunk: Option<usize>,
+    /// Previous current chunk (topic stack N-1) for unspecified "さっきの話".
+    #[serde(default)]
+    pub previous_chunk: Option<usize>,
+    /// Waiting for the user to pick among ambiguous return targets.
+    #[serde(default)]
+    pub pending_clarify: Option<PendingClarification>,
 }
 
 impl Default for SessionMemory {
@@ -50,6 +57,8 @@ impl SessionMemory {
             recent_n: recent_n.max(1),
             chunks: Vec::new(),
             current_chunk: None,
+            previous_chunk: None,
+            pending_clarify: None,
         }
     }
 
@@ -82,18 +91,40 @@ impl SessionMemory {
         let idx = self.chunks.len();
         self.chunks
             .push(TopicChunk::new(id, summary, embedding, self.turns.len()));
-        self.current_chunk = Some(idx);
+        self.set_current_chunk(idx);
         idx
     }
 
     /// Switch the active topic to an existing chunk (topic return).
     pub fn return_to_chunk(&mut self, index: usize) -> bool {
         if index < self.chunks.len() {
-            self.current_chunk = Some(index);
+            self.set_current_chunk(index);
             true
         } else {
             false
         }
+    }
+
+    /// Update `current_chunk`, remembering the prior one as `previous_chunk`.
+    pub fn set_current_chunk(&mut self, index: usize) {
+        if self.current_chunk == Some(index) {
+            return;
+        }
+        self.previous_chunk = self.current_chunk;
+        self.current_chunk = Some(index);
+        self.pending_clarify = None;
+    }
+
+    pub fn set_pending_clarify(&mut self, pending: PendingClarification) {
+        self.pending_clarify = Some(pending);
+    }
+
+    pub fn clear_pending_clarify(&mut self) {
+        self.pending_clarify = None;
+    }
+
+    pub fn chunk_labels(&self) -> Vec<String> {
+        self.chunks.iter().map(|c| c.summary.clone()).collect()
     }
 
     pub fn current_embedding(&self) -> Option<&[f32]> {
@@ -158,6 +189,8 @@ impl SessionMemory {
         self.summary.clear();
         self.chunks.clear();
         self.current_chunk = None;
+        self.previous_chunk = None;
+        self.pending_clarify = None;
     }
 }
 
@@ -210,6 +243,7 @@ mod tests {
         assert_eq!(mem.current_chunk, Some(i1));
         assert!(mem.return_to_chunk(i0));
         assert_eq!(mem.current_chunk, Some(i0));
+        assert_eq!(mem.previous_chunk, Some(i1));
         let past = mem.past_chunk_embeddings();
         assert_eq!(past.len(), 1);
         assert_eq!(past[0].0, i1);
