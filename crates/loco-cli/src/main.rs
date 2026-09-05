@@ -22,8 +22,8 @@ use loco_engine::ChatSession;
 #[cfg(feature = "embed")]
 use loco_embed::{
     expand_query, match_clarification, resolve_topic, ChunkScore, Clarification, ClarifyAction,
-    ClarifyCandidate, GraniteEmbedder, ResolveInput, ResolveOutcome, S1Thresholds,
-    DEFAULT_AMBIGUITY_DELTA,
+    ClarifyCandidate, GraniteEmbedder, GraySafetyS2, ResolveInput, ResolveOutcome, S1Thresholds,
+    TopicS2, DEFAULT_AMBIGUITY_DELTA,
 };
 
 #[derive(Debug, Parser)]
@@ -627,7 +627,8 @@ fn apply_resolve(
         .collect();
     let current = memory.current_embedding().map(|e| e.to_vec());
     let labels = memory.chunk_labels();
-    let outcome = resolve_topic(&ResolveInput {
+    let mut s2 = GraySafetyS2::default();
+    let mut inp = ResolveInput {
         user,
         query_emb: &query,
         current: current.as_deref(),
@@ -636,7 +637,9 @@ fn apply_resolve(
         chunk_labels: &labels,
         thresholds: S1Thresholds::default(),
         ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
-    });
+        s2: Some(&mut s2 as &mut dyn TopicS2),
+    };
+    let outcome = resolve_topic(&mut inp);
 
     Ok(match outcome {
         ResolveOutcome::Continue => {

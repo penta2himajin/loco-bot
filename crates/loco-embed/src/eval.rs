@@ -19,6 +19,7 @@ use crate::resolve::{
     ResolveInput, ResolveOutcome, DEFAULT_AMBIGUITY_DELTA,
 };
 use crate::s1::{ChunkScore, S1Thresholds};
+use crate::s2::{GraySafetyS2, TopicS2};
 
 /// Minimal embedder surface for text→vector eval cases.
 pub trait TextEmbedder {
@@ -505,7 +506,8 @@ fn eval_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> Result
                 .as_ref()
                 .map(S1Thresholds::from)
                 .unwrap_or_default();
-            let out = resolve_topic(&ResolveInput {
+            let mut s2 = GraySafetyS2::default();
+            let mut inp = ResolveInput {
                 user,
                 query_emb: &q,
                 current: cur_owned.as_deref(),
@@ -514,7 +516,9 @@ fn eval_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> Result
                 chunk_labels,
                 thresholds: th,
                 ambiguity_delta: ambiguity_delta.unwrap_or(DEFAULT_AMBIGUITY_DELTA),
-            });
+                s2: Some(&mut s2 as &mut dyn TopicS2),
+            };
+            let out = resolve_topic(&mut inp);
             match_outcome(&out, expect)
         }
         EvalCase::ClarifyMatch {
@@ -599,7 +603,8 @@ fn eval_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> Result
                 .as_ref()
                 .map(S1Thresholds::from)
                 .unwrap_or_default();
-            let out = resolve_topic(&ResolveInput {
+            let mut s2 = GraySafetyS2::default();
+            let mut inp = ResolveInput {
                 user,
                 query_emb: &q,
                 current: cur_owned.as_deref(),
@@ -608,7 +613,9 @@ fn eval_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> Result
                 chunk_labels,
                 thresholds: th,
                 ambiguity_delta: ambiguity_delta.unwrap_or(DEFAULT_AMBIGUITY_DELTA),
-            });
+                s2: Some(&mut s2 as &mut dyn TopicS2),
+            };
+            let out = resolve_topic(&mut inp);
             match_outcome(&out, expect)
         }
         EvalCase::EmbedRank {

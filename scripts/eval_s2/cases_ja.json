@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "ja-s2-lfm-router",
+  "cases": [
+    {
+      "id": "new_with_past",
+      "user": "量子コンピュータの基礎を一言で",
+      "current_label": "東京の地下鉄の切符の買い方",
+      "past_labels": ["カレーの作り方を詳しく教えて"],
+      "expect": "New"
+    },
+    {
+      "id": "named_return_subway",
+      "user": "さっきの地下鉄の話に戻って",
+      "current_label": "カレーの作り方を詳しく教えて",
+      "past_labels": ["東京の地下鉄の切符の買い方"],
+      "expect": "Return",
+      "expect_return_index": 0
+    },
+    {
+      "id": "continue_subway",
+      "user": "乗り換えのコツは？",
+      "current_label": "東京の地下鉄の切符の買い方",
+      "past_labels": ["カレーの作り方を詳しく教えて"],
+      "expect": "Continue"
+    },
+    {
+      "id": "continue_curry",
+      "user": "スパイスは何を使う？",
+      "current_label": "カレーの作り方を詳しく教えて",
+      "past_labels": ["東京の地下鉄の切符の買い方"],
+      "expect": "Continue"
+    },
+    {
+      "id": "ambiguous_clarify",
+      "user": "関連する話に戻したい",
+      "current_label": "明日の天気予報を教えて",
+      "past_labels": [
+        "東京の地下鉄の切符の買い方",
+        "カレーの作り方を詳しく教えて"
+      ],
+      "expect": "Clarify"
+    },
+    {
+      "id": "unspecified_return_stack",
+      "user": "さっきの話",
+      "current_label": "カレーの作り方を詳しく教えて",
+      "past_labels": ["東京の地下鉄の切符の買い方"],
+      "expect": "Return",
+      "expect_return_index": 0,
+      "note": "deixis often handled before S2; router may still see Return"
+    }
+  ]
+}

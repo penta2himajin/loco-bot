@@ -149,7 +149,7 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 - Crate `loco-embed`: cosine + short-query expansion + S1 cascade; optional `ort` feature loads `onnx/model.onnx` (CLS pool, L2 normalize, 384-d).
 - Cache id `granite-97m` downloads `onnx/model.onnx` + `tokenizer.json` from `ibm-granite/granite-embedding-97m-multilingual-r2`.
 - `SessionMemory` persists `chunks` / `current_chunk`; chat logs `[topic: …]` and includes active topic in the system preamble.
-- Default thresholds: continue ≥ 0.75, return ≥ 0.65, new if best < 0.35; gray zone without S2 → New. Query expansion is deictic/bare-followup only (not every short topical line).
+- Default thresholds: continue ≥ 0.78, return ≥ 0.78, confident new if best < 0.50 (granite-97m calibrated 2026-09-06); gray zone → S2 (`GraySafetyS2`: clarify close mid-pasts, else New). Query expansion is deictic/bare-followup only (not every short topical line).
 - Next: P4 context compiler (resident + dynamic chunk on return).
 
 ## P4 implementation notes (2026-09-05)
@@ -175,9 +175,17 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 
 - `loco-embed::eval` loads declarative JSON suites; kinds: `deixis` / `expand` / `resolve` / `clarify_match` / `resolve_text` / `embed_rank`.
 - Logic fixtures: `crates/loco-embed/fixtures/s1/` (synthetic embeddings — CI needs no ONNX). Seed + edge suites (~36 cases).
-- ONNX fixtures: `crates/loco-embed/fixtures/s1_onnx/` — real granite embed; skip if uncached. Verified 9/9 on Mac cache.
+- ONNX fixtures: `crates/loco-embed/fixtures/s1_onnx/` — real granite embed; skip if uncached.
 - Run: `mise run eval-s1` / `mise run eval-s1-onnx`.
-- Deferred: Needle, reranker, text-only pack (still as-needed).
+
+## P6.1 threshold calibration + S2 (2026-09-06)
+
+- Measured granite bands: true Continue/Return ≈0.80–0.90; hard negatives ≈0.71–0.73.
+- Defaults: `continue_min`/`return_min` = **0.78**, `new_max` = **0.50** (`S1Thresholds::granite_calibrated`).
+- S1 now returns `S1Outcome::Gray` instead of silent New; S2 (`GraySafetyS2`) clarifies close mid-pasts or chooses New — no soft-Return on weak scores.
+- ONNX fixture `onnx_new_with_past` covers multipast New (the case empty-past was dodging).
+- LFM spikes (`scripts/eval_s2/`): Encoder Prompt-Router **2/6**, generative LFM2.5-350M **2/6** on JA S2 cases — **not adopted** (Return/Continue biases). Needle2 rejected earlier (no multilingual claim); NLI out of scope.
+- Deferred: Prompt-Router fine-tune, cross-encoder, text-only pack.
 
 ## References
 

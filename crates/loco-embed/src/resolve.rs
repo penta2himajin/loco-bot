@@ -1,8 +1,9 @@
-//! Topic resolve: deixis rules + S1 scores + previous-chunk stack + clarify.
+//! Topic resolve: deixis rules + S1 scores + previous-chunk stack + clarify + S2.
 
 use crate::cosine::cosine;
 use crate::deixis::{classify_deixis, DeixisKind};
-use crate::s1::{decide_s1, ChunkScore, S1Thresholds, TopicDecision};
+use crate::s1::{decide_s1, ChunkScore, S1Outcome, S1Thresholds};
+use crate::s2::{S2Decision, TopicS2};
 
 /// Default: if top-2 past scores are within this gap and both are strong, ask.
 pub const DEFAULT_AMBIGUITY_DELTA: f32 = 0.05;
@@ -45,10 +46,12 @@ pub struct ResolveInput<'a> {
     pub chunk_labels: &'a [String],
     pub thresholds: S1Thresholds,
     pub ambiguity_delta: f32,
+    /// Optional S2 for the S1 gray band. When `None`, gray → New.
+    pub s2: Option<&'a mut dyn TopicS2>,
 }
 
 /// Resolve topic transition with deixis-aware rules.
-pub fn resolve_topic(input: &ResolveInput<'_>) -> ResolveOutcome {
+pub fn resolve_topic(input: &mut ResolveInput<'_>) -> ResolveOutcome {
     match classify_deixis(input.user) {
         DeixisKind::ReturnUnspecified => resolve_unspecified_return(input),
         DeixisKind::ReturnNamed | DeixisKind::Plain | DeixisKind::ContinueHint => {
@@ -80,7 +83,7 @@ fn resolve_unspecified_return(input: &ResolveInput<'_>) -> ResolveOutcome {
     }
 }
 
-fn resolve_with_s1(input: &ResolveInput<'_>) -> ResolveOutcome {
+fn resolve_with_s1(input: &mut ResolveInput<'_>) -> ResolveOutcome {
     if let Some(clarify) = ambiguous_past_return(input) {
         return ResolveOutcome::NeedsClarification(clarify);
     }
@@ -91,9 +94,25 @@ fn resolve_with_s1(input: &ResolveInput<'_>) -> ResolveOutcome {
         input.past,
         &input.thresholds,
     ) {
-        TopicDecision::Continue => ResolveOutcome::Continue,
-        TopicDecision::New => ResolveOutcome::New,
-        TopicDecision::Return { chunk_index } => ResolveOutcome::Return { chunk_index },
+        S1Outcome::Continue => ResolveOutcome::Continue,
+        S1Outcome::New => ResolveOutcome::New,
+        S1Outcome::Return { chunk_index } => ResolveOutcome::Return { chunk_index },
+        S1Outcome::Gray(evidence) => {
+            let decision = match input.s2.as_mut() {
+                Some(s2) => s2.decide_gray(&evidence),
+                None => S2Decision::New,
+            };
+            match decision {
+                S2Decision::Continue => ResolveOutcome::Continue,
+                S2Decision::New => ResolveOutcome::New,
+                S2Decision::Return { chunk_index } => ResolveOutcome::Return { chunk_index },
+                S2Decision::ClarifyPast => ResolveOutcome::NeedsClarification(build_clarification(
+                    input.past,
+                    input.chunk_labels,
+                    false,
+                )),
+            }
+        }
     }
 }
 
@@ -199,11 +218,34 @@ pub fn match_clarification(user: &str, clarification: &Clarification) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::s2::GraySafetyS2;
 
     fn unit(dim: usize, hot: usize) -> Vec<f32> {
         let mut v = vec![0.0f32; dim];
         v[hot] = 1.0;
         v
+    }
+
+    fn input<'a>(
+        user: &'a str,
+        q: &'a [f32],
+        cur: Option<&'a [f32]>,
+        past: &'a [ChunkScore<'a>],
+        previous_chunk: Option<usize>,
+        labels: &'a [String],
+        s2: Option<&'a mut dyn TopicS2>,
+    ) -> ResolveInput<'a> {
+        ResolveInput {
+            user,
+            query_emb: q,
+            current: cur,
+            past,
+            previous_chunk,
+            chunk_labels: labels,
+            thresholds: S1Thresholds::default(),
+            ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
+            s2,
+        }
     }
 
     #[test]
@@ -216,17 +258,11 @@ mod tests {
             embedding: &past_emb,
         }];
         let labels = ["subway".into(), "cooking".into()];
-        let out = resolve_topic(&ResolveInput {
-            user: "さっきの話",
-            query_emb: &q,
-            current: Some(&cur),
-            past: &past,
-            previous_chunk: Some(0),
-            chunk_labels: &labels,
-            thresholds: S1Thresholds::default(),
-            ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
-        });
-        assert_eq!(out, ResolveOutcome::Return { chunk_index: 0 });
+        let mut inp = input("さっきの話", &q, Some(&cur), &past, Some(0), &labels, None);
+        assert_eq!(
+            resolve_topic(&mut inp),
+            ResolveOutcome::Return { chunk_index: 0 }
+        );
     }
 
     #[test]
@@ -246,17 +282,16 @@ mod tests {
             },
         ];
         let labels = vec!["subway".into(), "cooking".into(), "now".into()];
-        let out = resolve_topic(&ResolveInput {
-            user: "さっきの話に戻って",
-            query_emb: &q,
-            current: Some(&cur),
-            past: &past,
-            previous_chunk: None,
-            chunk_labels: &labels,
-            thresholds: S1Thresholds::default(),
-            ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
-        });
-        match out {
+        let mut inp = input(
+            "さっきの話に戻って",
+            &q,
+            Some(&cur),
+            &past,
+            None,
+            &labels,
+            None,
+        );
+        match resolve_topic(&mut inp) {
             ResolveOutcome::NeedsClarification(c) => {
                 assert!(c.question.contains("どの話"));
                 assert!(c.candidates.len() >= 3);
@@ -280,7 +315,7 @@ mod tests {
             return_min: 0.90,
             new_max: 0.20,
         };
-        let out = resolve_topic(&ResolveInput {
+        let mut inp = ResolveInput {
             user: "さっきの地下鉄の話に戻って",
             query_emb: &q,
             current: Some(&cur),
@@ -289,12 +324,17 @@ mod tests {
             chunk_labels: &labels,
             thresholds: th,
             ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
-        });
-        assert_eq!(out, ResolveOutcome::Return { chunk_index: 0 });
+            s2: None,
+        };
+        assert_eq!(
+            resolve_topic(&mut inp),
+            ResolveOutcome::Return { chunk_index: 0 }
+        );
     }
 
     #[test]
-    fn close_past_scores_clarify() {
+    fn close_past_scores_clarify_via_s1_or_s2() {
+        // Scores ~0.70 each: below calibrated return_min (0.78) → gray → S2 clarify.
         let mut q = vec![0.7f32, 0.7, 0.0, 0.0];
         crate::l2_normalize(&mut q);
         let mut p0 = vec![1.0f32, 0.05, 0.0, 0.0];
@@ -305,7 +345,7 @@ mod tests {
         let s0 = cosine(&q, &p0);
         let s1 = cosine(&q, &p1);
         assert!((s0 - s1).abs() < 0.05, "s0={s0} s1={s1}");
-        assert!(s0 > 0.65 && s1 > 0.65, "s0={s0} s1={s1}");
+        assert!(s0 > 0.60 && s1 > 0.60, "s0={s0} s1={s1}");
 
         let past = [
             ChunkScore {
@@ -318,19 +358,22 @@ mod tests {
             },
         ];
         let labels = vec!["alpha".into(), "beta".into(), "gamma".into()];
-        let out = resolve_topic(&ResolveInput {
-            user: "関連する話に戻したい",
-            query_emb: &q,
-            current: Some(&cur),
-            past: &past,
-            previous_chunk: Some(0),
-            chunk_labels: &labels,
-            thresholds: S1Thresholds::default(),
-            ambiguity_delta: 0.05,
-        });
+        let mut s2 = GraySafetyS2::default();
+        let mut inp = input(
+            "関連する話に戻したい",
+            &q,
+            Some(&cur),
+            &past,
+            Some(0),
+            &labels,
+            Some(&mut s2),
+        );
         assert!(
-            matches!(out, ResolveOutcome::NeedsClarification(_)),
-            "got {out:?} s0={s0} s1={s1}"
+            matches!(
+                resolve_topic(&mut inp),
+                ResolveOutcome::NeedsClarification(_)
+            ),
+            "got clarify via S2 gray; s0={s0} s1={s1}"
         );
     }
 

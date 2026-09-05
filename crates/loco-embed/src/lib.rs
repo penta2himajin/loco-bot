@@ -10,6 +10,7 @@ mod eval;
 mod expand;
 mod resolve;
 mod s1;
+mod s2;
 
 #[cfg(feature = "ort")]
 mod ort_granite;
@@ -25,7 +26,10 @@ pub use resolve::{
     match_clarification, resolve_topic, Clarification, ClarifyAction, ClarifyCandidate,
     ResolveInput, ResolveOutcome, DEFAULT_AMBIGUITY_DELTA,
 };
-pub use s1::{decide_s1, ChunkScore, S1Thresholds, TopicDecision};
+pub use s1::{
+    decide_s1, decide_s1_or_new, ChunkScore, GrayEvidence, S1Outcome, S1Thresholds, TopicDecision,
+};
+pub use s2::{topic_from_s2, GraySafetyS2, S2Decision, TopicS2};
 
 #[cfg(feature = "ort")]
 pub use ort_granite::{EmbedError, GraniteEmbedder};

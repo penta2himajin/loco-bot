@@ -82,6 +82,18 @@
     },
     {
       "kind": "resolve_text",
+      "id": "onnx_new_with_past",
+      "user": "量子コンピュータの基礎を一言で",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
       "id": "onnx_new_empty_past",
       "user": "量子コンピュータの基礎を一言で",
       "current_text": "東京の地下鉄の切符の買い方",
