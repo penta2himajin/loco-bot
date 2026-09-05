@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "name": "ja-deixis-s1-logic",
+  "cases": [
+    {
+      "kind": "deixis",
+      "id": "deixis_named_return",
+      "user": "さっきの地下鉄の話に戻って、切符はどう買う？",
+      "expect_deixis": "ReturnNamed"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_unspecified_short",
+      "user": "さっきの話",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_unspecified_戻って",
+      "user": "さっきの話に戻って",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_unspecified_前の話",
+      "user": "前の話なんだけど",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_continue_それ",
+      "user": "それについて",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_continue_なぜ",
+      "user": "なぜ？",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_continue_詳しく",
+      "user": "もっと詳しく",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_plain_curry",
+      "user": "カレーの作り方を一言",
+      "expect_deixis": "Plain"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_plain_subway",
+      "user": "地下鉄について一言",
+      "expect_deixis": "Plain"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_plain_unchanged",
+      "user": "カレーの作り方を一言",
+      "previous_user": "地下鉄について一言",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "expand",
+      "id": "expand_continue_prepends",
+      "user": "なぜ？",
+      "previous_user": "地下鉄について一言",
+      "expect_expanded_contains": "地下鉄"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_return_clean",
+      "user": "さっきの話",
+      "previous_user": "カレーの作り方を一言",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_unspecified_stack_return",
+      "user": "さっきの話",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 1] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "cooking"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_unspecified_no_stack_clarify",
+      "user": "さっきの話に戻って",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 2] },
+      "past": [
+        { "index": 0, "unit": [4, 0] },
+        { "index": 1, "unit": [4, 1] }
+      ],
+      "chunk_labels": ["subway", "cooking", "now"],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_named_return_via_s1",
+      "user": "さっきの地下鉄の話に戻って",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 1] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "cooking"],
+      "thresholds": {
+        "continue_min": 0.95,
+        "return_min": 0.9,
+        "new_max": 0.2
+      },
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_ambiguous_past_clarify",
+      "user": "関連する話に戻したい",
+      "query_emb": {
+        "vec": [0.7, 0.7, 0.0, 0.0],
+        "normalize": true
+      },
+      "current": { "unit": [4, 3] },
+      "past": [
+        {
+          "index": 0,
+          "vec": [1.0, 0.05, 0.0, 0.0],
+          "normalize": true
+        },
+        {
+          "index": 1,
+          "vec": [0.05, 1.0, 0.0, 0.0],
+          "normalize": true
+        }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["alpha", "beta", "gamma"],
+      "ambiguity_delta": 0.05,
+      "expect": { "outcome": "NeedsClarification" }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_continue_strong_current",
+      "user": "地下鉄の乗り換えについて",
+      "query_emb": { "unit": [4, 1] },
+      "current": { "unit": [4, 1] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "previous_chunk": 0,
+      "chunk_labels": ["old", "subway"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_new_when_weak",
+      "user": "全然別の天気の話",
+      "query_emb": { "unit": [4, 3] },
+      "current": { "unit": [4, 1] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "chunk_labels": ["a", "b"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "clarify_match",
+      "id": "clarify_by_number",
+      "user": "2",
+      "candidates": [
+        { "label": "今の話題のまま", "action": { "kind": "ContinueCurrent" } },
+        {
+          "label": "地下鉄について一言",
+          "action": { "kind": "ReturnTo", "chunk_index": 0 }
+        }
+      ],
+      "expect_action": { "kind": "ReturnTo", "chunk_index": 0 }
+    },
+    {
+      "kind": "clarify_match",
+      "id": "clarify_by_keyword",
+      "user": "地下鉄",
+      "candidates": [
+        { "label": "今の話題のまま", "action": { "kind": "ContinueCurrent" } },
+        {
+          "label": "地下鉄について一言",
+          "action": { "kind": "ReturnTo", "chunk_index": 0 }
+        }
+      ],
+      "expect_action": { "kind": "ReturnTo", "chunk_index": 0 }
+    },
+    {
+      "kind": "clarify_match",
+      "id": "clarify_stay_current",
+      "user": "1",
+      "candidates": [
+        { "label": "今の話題のまま", "action": { "kind": "ContinueCurrent" } },
+        {
+          "label": "地下鉄について一言",
+          "action": { "kind": "ReturnTo", "chunk_index": 0 }
+        }
+      ],
+      "expect_action": { "kind": "ContinueCurrent" }
+    }
+  ]
+}

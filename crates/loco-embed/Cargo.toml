@@ -12,6 +12,8 @@ default = []
 ort = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 ort = { version = "2.0.0-rc.13", optional = true, default-features = true, features = [
     "download-binaries",

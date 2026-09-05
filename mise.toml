@@ -28,3 +28,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 """
+
+[tasks.eval-s1]
+description = "Run S1/deixis declarative eval fixtures"
+run = "cargo test -p loco-embed --test s1_eval -- --nocapture"

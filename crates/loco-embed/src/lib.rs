@@ -2,9 +2,11 @@
 //!
 //! Pure cosine / cascade / deixis resolve logic is always available.
 //! The granite-97m ONNX runtime sits behind the `ort` feature.
+//! Declarative eval fixtures live under `fixtures/s1/` (`eval` module).
 
 mod cosine;
 mod deixis;
+mod eval;
 mod expand;
 mod resolve;
 mod s1;
@@ -14,6 +16,9 @@ mod ort_granite;
 
 pub use cosine::{cosine, l2_normalize};
 pub use deixis::{classify_deixis, DeixisKind};
+pub use eval::{
+    load_suite, load_suites_dir, run_suite, CaseResult, EvalCase, EvalError, EvalSuite, SuiteReport,
+};
 pub use expand::expand_query;
 pub use resolve::{
     match_clarification, resolve_topic, Clarification, ClarifyAction, ClarifyCandidate,

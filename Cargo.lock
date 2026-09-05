@@ -1320,6 +1320,8 @@ name = "loco-embed"
 version = "0.1.0"
 dependencies = [
  "ort",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokenizers",

@@ -62,7 +62,7 @@ Build a small on-device agent for mobile and laptop that:
 | **P3** | granite-97m-r2 S1 topic detection — **landed** (`loco-embed` + session chunks) |
 | **P4** | Context compiler → E4B — **landed** (`loco-memory::compile`, resident + dynamic on return) |
 | **P5** | Small tool surface — **landed** (`loco-engine::tools` + agent loop) |
-| **P6** | Needle / reranker / text-only pack as needed |
+| **P6** | As-needed backlog (Needle / reranker / text-only); **P6.0** S1 eval harness first |
 
 ## Stack sketch
 
@@ -141,7 +141,7 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 1. Persistence: SQLite vs files; sync story across devices (if any)
 2. Tool surface for v1 (clock, notes, local search, …)
 3. When (if ever) to add Needle 2 and/or a cross-encoder S1b
-4. Japanese UX assumptions and evaluation set for S1 thresholds
+4. Japanese UX assumptions and evaluation set for S1 thresholds — **started** (`fixtures/s1/ja-deixis-s1-logic.json`)
 5. Which LiteRT-LM Rust binding to standardize on for P1 (`litertlm-rs` vs alternatives)
 
 ## P3 implementation notes (2026-09-05)
@@ -169,7 +169,15 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 
 - `loco-engine::tools`: OpenAI-style schemas via `ConversationConfig::set_tools`; parse `tool_calls`; built-ins `get_current_time`, `note_write` / `note_read` (`…/notes/notes.json`), `session_stats`.
 - `ChatSession::reply_with_tools` non-streaming agent loop (cap 4 rounds); CLI default-on, `--no-tools` to disable.
-- Next: P6 Needle / reranker / text-only pack as needed.
+- Next: measure before Needle / reranker / text-only; first step = S1/deixis eval harness.
+
+## P6.0 S1/deixis eval harness (2026-09-06)
+
+- `loco-embed::eval` loads declarative JSON suites; kinds: `deixis` / `expand` / `resolve` / `clarify_match`.
+- Fixtures: `crates/loco-embed/fixtures/s1/` (synthetic embeddings — CI needs no ONNX).
+- Run: `mise run eval-s1` or `cargo test -p loco-embed --test s1_eval`.
+- Seed suite `ja-deixis-s1-logic.json` covers Japanese deixis phrases, stack return, ambiguous clarify, expand rules.
+- Deferred: ONNX text suites, Needle, reranker, text-only pack (still as-needed).
 
 ## References
 

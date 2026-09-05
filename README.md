@@ -43,6 +43,7 @@ cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot reply (+ memory
 cargo run -p loco-cli -- chat --backend gpu           # interactive REPL
 cargo run -p loco-cli -- memory show
 cargo run -p loco-cli -- memory clear
+cargo test -p loco-embed --test s1_eval   # S1/deixis fixture harness (no ONNX)
 ```
 
 Session memory stores turns, a rolling summary, and S1 topic chunks under the cache
