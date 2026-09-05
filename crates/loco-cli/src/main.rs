@@ -8,8 +8,9 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
 use loco_engine::{
-    install_model_file, model_fully_ready, model_status, with_session_notes, CacheLayout,
-    InferenceBackend, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT, GRANITE_97M,
+    default_tools_json, install_model_file, model_fully_ready, model_status, with_session_notes,
+    CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, ToolHost, GEMMA4_E4B_IT,
+    GRANITE_97M,
 };
 use loco_memory::{
     compile, CompilerConfig, PendingCandidate, PendingClarification, SessionMemory, TopicSwitch,
@@ -73,6 +74,9 @@ enum Commands {
         /// Skip S1 topic detection even if granite is cached.
         #[arg(long)]
         no_topic: bool,
+        /// Disable built-in tools (clock, notes, session_stats).
+        #[arg(long)]
+        no_tools: bool,
         /// Optional one-shot prompt. If omitted, starts an interactive REPL.
         prompt: Option<String>,
     },
@@ -113,6 +117,7 @@ fn run() -> Result<()> {
             backend,
             no_memory,
             no_topic,
+            no_tools,
             prompt,
         } => cmd_chat(
             &layout,
@@ -120,6 +125,7 @@ fn run() -> Result<()> {
             &backend,
             no_memory,
             no_topic,
+            no_tools,
             prompt.as_deref(),
         ),
     }
@@ -312,16 +318,21 @@ fn cmd_chat(
     backend: &str,
     no_memory: bool,
     no_topic: bool,
+    no_tools: bool,
     prompt: Option<&str>,
 ) -> Result<()> {
     #[cfg(not(feature = "inference"))]
     {
-        let _ = (layout, model, backend, no_memory, no_topic, prompt);
+        let _ = (
+            layout, model, backend, no_memory, no_topic, no_tools, prompt,
+        );
         bail!("chat requires the `inference` feature (default for loco-cli)");
     }
 
     #[cfg(feature = "inference")]
-    chat_with_inference(layout, model, backend, no_memory, no_topic, prompt)
+    chat_with_inference(
+        layout, model, backend, no_memory, no_topic, no_tools, prompt,
+    )
 }
 
 #[cfg(feature = "inference")]
@@ -331,6 +342,7 @@ fn chat_with_inference(
     backend: &str,
     no_memory: bool,
     no_topic: bool,
+    no_tools: bool,
     prompt: Option<&str>,
 ) -> Result<()> {
     let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
@@ -381,8 +393,24 @@ fn chat_with_inference(
     } else if !no_memory {
         eprintln!("memory: empty ({})", memory_path.display());
     }
-    let mut session =
-        ChatSession::open(&path, backend, notes.as_deref()).context("open chat session")?;
+
+    let tools_json = if no_tools {
+        None
+    } else {
+        Some(default_tools_json())
+    };
+    let tool_host = if no_tools {
+        None
+    } else {
+        eprintln!(
+            "tools: get_current_time, note_write, note_read, session_stats ({})",
+            layout.notes_path().display()
+        );
+        Some(ToolHost::new(layout.notes_path(), memory_path.clone()))
+    };
+
+    let mut session = ChatSession::open(&path, backend, notes.as_deref(), tools_json.as_deref())
+        .context("open chat session")?;
     eprintln!("ready.\n");
 
     if let Some(one_shot) = prompt {
@@ -391,6 +419,7 @@ fn chat_with_inference(
             &mut memory,
             &mut session,
             no_memory,
+            tool_host.as_ref(),
             #[cfg(feature = "embed")]
             &mut embedder,
         )?;
@@ -434,6 +463,7 @@ fn chat_with_inference(
             &mut memory,
             &mut session,
             no_memory,
+            tool_host.as_ref(),
             #[cfg(feature = "embed")]
             &mut embedder,
         ) {
@@ -459,6 +489,7 @@ fn chat_reply(
     memory: &mut SessionMemory,
     session: &mut ChatSession,
     no_memory: bool,
+    tools: Option<&ToolHost>,
     #[cfg(feature = "embed")] embedder: &mut Option<GraniteEmbedder>,
 ) -> Result<String> {
     let switch = if no_memory {
@@ -511,7 +542,13 @@ fn chat_reply(
     };
 
     let payload = with_session_notes(compiled.as_deref(), text);
-    session.reply(&payload).context("generate reply")
+    if let Some(host) = tools {
+        session
+            .reply_with_tools(&payload, host)
+            .context("generate reply (tools)")
+    } else {
+        session.reply(&payload).context("generate reply")
+    }
 }
 
 #[cfg(feature = "embed")]

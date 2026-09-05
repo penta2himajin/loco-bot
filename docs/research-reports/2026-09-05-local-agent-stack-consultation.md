@@ -1,7 +1,7 @@
 # Local Agent Stack Consultation — LiteRT-LM, Gemma 4 E4B, Memory, Embeddings
 
 - **Date**: 2026-09-05
-- **Status**: P0–P2 landed (plain chat + thin session memory)
+- **Status**: P0–P5 landed (chat + memory + S1 + compiler + deixis + tools)
 - **Scope**: Mobile/laptop small local agent (`loco-bot`)
 
 ## Goal
@@ -61,7 +61,7 @@ Build a small on-device agent for mobile and laptop that:
 | **P2** | Thin memory (turns + recent-N + simple summary) |
 | **P3** | granite-97m-r2 S1 topic detection — **landed** (`loco-embed` + session chunks) |
 | **P4** | Context compiler → E4B — **landed** (`loco-memory::compile`, resident + dynamic on return) |
-| **P5** | Small tool surface |
+| **P5** | Small tool surface — **landed** (`loco-engine::tools` + agent loop) |
 | **P6** | Needle / reranker / text-only pack as needed |
 
 ## Stack sketch
@@ -156,7 +156,6 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 
 - `loco_memory::compile(switch)` builds resident (summary + active topic + optional recent turns) and, on `TopicSwitch::Return`, a dynamic snapshot of that chunk’s turns.
 - CLI injects compiled notes in-band every turn (`[context: resident(+dynamic) N chars]`). Continue/New omit the recent-turn dump (Conversation already has it); Return includes dynamic + a short recent window.
-- Next: P5 small tool surface.
 
 ## P4.1 deixis resolve (2026-09-05)
 
@@ -165,6 +164,12 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 - Named return still uses granite S1; close top-2 past scores → clarify.
 - Continue deixis expands with the previous user turn only.
 - Verified: `さっきの話` → return#0+dynamic; `それについて` → continue; seeded ambiguous → clarify → `2` ack.
+
+## P5 implementation notes (2026-09-05)
+
+- `loco-engine::tools`: OpenAI-style schemas via `ConversationConfig::set_tools`; parse `tool_calls`; built-ins `get_current_time`, `note_write` / `note_read` (`…/notes/notes.json`), `session_stats`.
+- `ChatSession::reply_with_tools` non-streaming agent loop (cap 4 rounds); CLI default-on, `--no-tools` to disable.
+- Next: P6 Needle / reranker / text-only pack as needed.
 
 ## References
 

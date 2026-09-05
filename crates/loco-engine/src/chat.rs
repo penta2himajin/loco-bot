@@ -1,4 +1,4 @@
-//! Thin LiteRT-LM chat session (plain text, streaming).
+//! Thin LiteRT-LM chat session (plain text, optional tools).
 
 use std::io::{self, Write};
 use std::path::Path;
@@ -6,10 +6,14 @@ use std::path::Path;
 use litertlm_rs::{
     extract_text, set_min_log_level, ConversationConfig, Engine, EngineSettings, LogSeverity,
 };
+use serde_json::json;
 use thiserror::Error;
 
 use crate::backend::InferenceBackend;
 use crate::prompt::user_message_json;
+use crate::tools::{
+    extract_assistant_text, extract_tool_calls, tool_response_json, ToolHost, MAX_TOOL_ROUNDS,
+};
 
 #[derive(Debug, Error)]
 pub enum ChatError {
@@ -17,6 +21,8 @@ pub enum ChatError {
     ModelMissing(String),
     #[error("liteRT-LM error: {0}")]
     LiteRt(String),
+    #[error("tool loop exceeded {0} rounds")]
+    ToolLoopExceeded(usize),
     #[error("io error: {0}")]
     Io(#[from] io::Error),
 }
@@ -46,10 +52,12 @@ impl ChatSession {
     ///
     /// `system_text`, when set, becomes the conversation system message content
     /// (used to inject a thin memory preamble).
+    /// `tools_json`, when set, is an OpenAI-style tools array for function calling.
     pub fn open(
         model_path: impl AsRef<Path>,
         backend: InferenceBackend,
         system_text: Option<&str>,
+        tools_json: Option<&str>,
     ) -> Result<Self, ChatError> {
         let path = model_path.as_ref();
         if !path.is_file() {
@@ -66,14 +74,21 @@ impl ChatSession {
         )?;
         let engine = Engine::new(&settings)?;
 
-        let conversation = if let Some(system) = system_text.filter(|s| !s.is_empty()) {
+        let system = system_text.filter(|s| !s.is_empty());
+        let tools = tools_json.filter(|s| !s.is_empty());
+        let conversation = if system.is_some() || tools.is_some() {
             let mut config = ConversationConfig::new()?;
-            let system_json = serde_json::json!({
-                "role": "system",
-                "content": system,
-            })
-            .to_string();
-            config.set_system_message(&system_json)?;
+            if let Some(sys) = system {
+                let system_json = serde_json::json!({
+                    "role": "system",
+                    "content": sys,
+                })
+                .to_string();
+                config.set_system_message(&system_json)?;
+            }
+            if let Some(tools_json) = tools {
+                config.set_tools(tools_json)?;
+            }
             engine.create_conversation_with_config(&config)?
         } else {
             engine.create_conversation()?
@@ -120,6 +135,43 @@ impl ChatSession {
         Ok(out)
     }
 
+    /// Agent loop: send user → execute tool_calls → feed tool results → final text.
+    ///
+    /// Uses non-streaming `send_message` so full assistant JSON (including
+    /// `tool_calls`) is available each round.
+    pub fn reply_with_tools(
+        &mut self,
+        user_text: &str,
+        host: &ToolHost,
+    ) -> Result<String, ChatError> {
+        let message_json = user_message_json(user_text);
+        let mut raw = self.conversation()?.send_message(&message_json)?;
+
+        for _ in 0..MAX_TOOL_ROUNDS {
+            let calls = extract_tool_calls(&raw);
+            if calls.is_empty() {
+                let text = extract_assistant_text(&raw);
+                if !text.is_empty() {
+                    return Ok(text);
+                }
+                let fallback = extract_text(&raw);
+                return Ok(fallback);
+            }
+
+            for call in &calls {
+                eprintln!("[tool] {}", call.name);
+                let response = match host.execute(&call.name, &call.arguments) {
+                    Ok(v) => v,
+                    Err(err) => json!({ "error": err.to_string() }),
+                };
+                let tool_msg = tool_response_json(&call.name, &response, call.id.as_deref());
+                raw = self.conversation()?.send_message(&tool_msg)?;
+            }
+        }
+
+        Err(ChatError::ToolLoopExceeded(MAX_TOOL_ROUNDS))
+    }
+
     /// Stream to stdout (CLI helper).
     pub fn reply_to_stdout(&mut self, user_text: &str) -> Result<(), ChatError> {
         let mut printed = false;
@@ -142,7 +194,8 @@ mod tests {
 
     #[test]
     fn open_missing_model_errors() {
-        let result = ChatSession::open("/no/such/model.litertlm", InferenceBackend::Cpu, None);
+        let result =
+            ChatSession::open("/no/such/model.litertlm", InferenceBackend::Cpu, None, None);
         assert!(matches!(result, Err(ChatError::ModelMissing(_))));
     }
 }

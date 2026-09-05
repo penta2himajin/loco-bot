@@ -40,6 +40,11 @@ impl CacheLayout {
     pub fn memory_path(&self) -> PathBuf {
         self.root.join("memory").join("session.json")
     }
+
+    /// Durable user notes (tool: note_write / note_read).
+    pub fn notes_path(&self) -> PathBuf {
+        self.root.join("notes").join("notes.json")
+    }
 }
 
 /// Default cache root: `$XDG_CACHE_HOME/loco-bot` or platform equivalent.
@@ -75,6 +80,15 @@ mod tests {
         assert_eq!(
             layout.memory_path(),
             PathBuf::from("/tmp/loco-cache/memory/session.json")
+        );
+    }
+
+    #[test]
+    fn notes_path_under_cache_root() {
+        let layout = CacheLayout::new("/tmp/loco-cache");
+        assert_eq!(
+            layout.notes_path(),
+            PathBuf::from("/tmp/loco-cache/notes/notes.json")
         );
     }
 }
