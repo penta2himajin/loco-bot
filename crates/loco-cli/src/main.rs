@@ -11,7 +11,7 @@ use loco_engine::{
     install_model_file, model_fully_ready, model_status, with_session_notes, CacheLayout,
     InferenceBackend, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT, GRANITE_97M,
 };
-use loco_memory::SessionMemory;
+use loco_memory::{compile, CompilerConfig, SessionMemory, TopicSwitch};
 
 #[cfg(feature = "inference")]
 use loco_engine::ChatSession;
@@ -357,6 +357,7 @@ fn chat_with_inference(
     let notes = if no_memory {
         None
     } else {
+        // Cold-start system message; per-turn notes come from the compiler.
         memory.system_preamble()
     };
 
@@ -366,7 +367,7 @@ fn chat_with_inference(
         path.display()
     );
     if let Some(ref p) = notes {
-        eprintln!("memory: will attach {} chars of session notes", p.len());
+        eprintln!("memory: system preamble {} chars", p.len());
     } else if !no_memory {
         eprintln!("memory: empty ({})", memory_path.display());
     }
@@ -374,15 +375,12 @@ fn chat_with_inference(
         ChatSession::open(&path, backend, notes.as_deref()).context("open chat session")?;
     eprintln!("ready.\n");
 
-    let mut attach_notes = notes.is_some();
-
     if let Some(one_shot) = prompt {
         let reply = chat_reply(
             one_shot,
             &mut memory,
-            &mut attach_notes,
-            notes.as_deref(),
             &mut session,
+            no_memory,
             #[cfg(feature = "embed")]
             &mut embedder,
         )?;
@@ -424,9 +422,8 @@ fn chat_with_inference(
         match chat_reply(
             text,
             &mut memory,
-            &mut attach_notes,
-            notes.as_deref(),
             &mut session,
+            no_memory,
             #[cfg(feature = "embed")]
             &mut embedder,
         ) {
@@ -450,22 +447,53 @@ fn chat_with_inference(
 fn chat_reply(
     text: &str,
     memory: &mut SessionMemory,
-    attach_notes: &mut bool,
-    notes: Option<&str>,
     session: &mut ChatSession,
+    no_memory: bool,
     #[cfg(feature = "embed")] embedder: &mut Option<GraniteEmbedder>,
 ) -> Result<String> {
-    #[cfg(feature = "embed")]
-    if let Some(emb) = embedder.as_mut() {
-        apply_s1(emb, memory, text)?;
-    }
-
-    let payload = if *attach_notes {
-        *attach_notes = false;
-        with_session_notes(notes, text)
+    let switch = if no_memory {
+        TopicSwitch::Continue
     } else {
-        text.to_string()
+        #[cfg(feature = "embed")]
+        {
+            if let Some(emb) = embedder.as_mut() {
+                apply_s1(emb, memory, text)?
+            } else {
+                TopicSwitch::Continue
+            }
+        }
+        #[cfg(not(feature = "embed"))]
+        {
+            TopicSwitch::Continue
+        }
     };
+
+    let cfg = match switch {
+        // Return needs the archived chunk turns; include a short recent window too.
+        TopicSwitch::Return { .. } => CompilerConfig::default(),
+        // Live Conversation already holds recent turns — keep notes compact.
+        TopicSwitch::Continue | TopicSwitch::New => CompilerConfig {
+            recent_turn_window: 0,
+            ..CompilerConfig::default()
+        },
+    };
+    let compiled = if no_memory {
+        None
+    } else {
+        let ctx = compile(memory, switch, &cfg);
+        let notes = ctx.render_notes(&cfg);
+        if let Some(ref n) = notes {
+            let dyn_tag = if ctx.dynamic.is_some() {
+                "+dynamic"
+            } else {
+                ""
+            };
+            eprintln!("[context: resident{dyn_tag} {} chars]", n.len());
+        }
+        notes
+    };
+
+    let payload = with_session_notes(compiled.as_deref(), text);
     session.reply(&payload).context("generate reply")
 }
 
@@ -491,7 +519,11 @@ fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<GraniteEmbedder
 }
 
 #[cfg(feature = "embed")]
-fn apply_s1(embedder: &mut GraniteEmbedder, memory: &mut SessionMemory, user: &str) -> Result<()> {
+fn apply_s1(
+    embedder: &mut GraniteEmbedder,
+    memory: &mut SessionMemory,
+    user: &str,
+) -> Result<TopicSwitch> {
     let expanded = expand_query(user, memory.last_user());
     let query = embedder
         .embed(&expanded)
@@ -510,19 +542,22 @@ fn apply_s1(embedder: &mut GraniteEmbedder, memory: &mut SessionMemory, user: &s
         .collect();
     let current = memory.current_embedding().map(|e| e.to_vec());
     let decision = decide_s1(&query, current.as_deref(), &past, &S1Thresholds::default());
-    match decision {
+    let switch = match decision {
         TopicDecision::Continue => {
             eprintln!("[topic: continue]");
+            TopicSwitch::Continue
         }
         TopicDecision::New => {
             let preview: String = user.chars().take(80).collect();
             let idx = memory.open_chunk(preview, query);
             eprintln!("[topic: new #{idx}]");
+            TopicSwitch::New
         }
         TopicDecision::Return { chunk_index } => {
             memory.return_to_chunk(chunk_index);
             eprintln!("[topic: return #{chunk_index}]");
+            TopicSwitch::Return { chunk_index }
         }
-    }
-    Ok(())
+    };
+    Ok(switch)
 }

@@ -60,7 +60,7 @@ Build a small on-device agent for mobile and laptop that:
 | **P1** | LiteRT-LM + E4B plain chat in CLI (streaming) |
 | **P2** | Thin memory (turns + recent-N + simple summary) |
 | **P3** | granite-97m-r2 S1 topic detection — **landed** (`loco-embed` + session chunks) |
-| **P4** | Context compiler → E4B |
+| **P4** | Context compiler → E4B — **landed** (`loco-memory::compile`, resident + dynamic on return) |
 | **P5** | Small tool surface |
 | **P6** | Needle / reranker / text-only pack as needed |
 
@@ -149,8 +149,14 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 - Crate `loco-embed`: cosine + short-query expansion + S1 cascade; optional `ort` feature loads `onnx/model.onnx` (CLS pool, L2 normalize, 384-d).
 - Cache id `granite-97m` downloads `onnx/model.onnx` + `tokenizer.json` from `ibm-granite/granite-embedding-97m-multilingual-r2`.
 - `SessionMemory` persists `chunks` / `current_chunk`; chat logs `[topic: …]` and includes active topic in the system preamble.
-- Default thresholds: continue ≥ 0.75, return ≥ 0.65, new if best < 0.35; gray zone → continue (no S2 yet).
+- Default thresholds: continue ≥ 0.75, return ≥ 0.65, new if best < 0.35; gray zone without S2 → New. Query expansion is deictic/bare-followup only (not every short topical line).
 - Next: P4 context compiler (resident + dynamic chunk on return).
+
+## P4 implementation notes (2026-09-05)
+
+- `loco_memory::compile(switch)` builds resident (summary + active topic + optional recent turns) and, on `TopicSwitch::Return`, a dynamic snapshot of that chunk’s turns.
+- CLI injects compiled notes in-band every turn (`[context: resident(+dynamic) N chars]`). Continue/New omit the recent-turn dump (Conversation already has it); Return includes dynamic + a short recent window.
+- Next: P5 small tool surface.
 
 ## References
 

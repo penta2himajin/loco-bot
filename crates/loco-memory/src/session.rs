@@ -113,28 +113,16 @@ impl SessionMemory {
     }
 
     /// Text suitable for a LiteRT-LM system message `content` field.
+    ///
+    /// Prefer [`crate::compile`] per turn (P4). This helper is a cold-start
+    /// resident-only snapshot (Continue switch).
     pub fn system_preamble(&self) -> Option<String> {
-        let mut parts = Vec::new();
-        if let Some(i) = self.current_chunk {
-            if let Some(c) = self.chunks.get(i) {
-                if !c.summary.is_empty() {
-                    parts.push(format!("Active topic: {}", c.summary));
-                }
-            }
-        }
-        if !self.summary.is_empty() {
-            parts.push(format!(
-                "Prior session notes (numbered chronologically):\n{}",
-                self.summary
-            ));
-        }
-        if parts.is_empty() {
-            return None;
-        }
-        Some(format!(
-            "You are loco-bot, a local on-device assistant. {}",
-            parts.join("\n\n")
-        ))
+        let cfg = crate::CompilerConfig {
+            // Cold-start preamble: summary + topic only (Conversation will see live turns).
+            recent_turn_window: 0,
+            ..crate::CompilerConfig::default()
+        };
+        crate::compile(self, crate::TopicSwitch::Continue, &cfg).render_notes(&cfg)
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self, SessionMemoryError> {

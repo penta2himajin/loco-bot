@@ -45,7 +45,7 @@ pub struct ChunkScore<'a> {
 /// 2. Current sim ≥ `continue_min` → Continue
 /// 3. Best past sim ≥ `return_min` → Return
 /// 4. Best of current/past < `new_max` → New
-/// 5. Gray zone → Continue (defer S2)
+/// 5. Gray zone without S2 → New (prefer a clean split over sticky Continue)
 pub fn decide_s1(
     query: &[f32],
     current: Option<&[f32]>,
@@ -82,7 +82,7 @@ pub fn decide_s1(
         return TopicDecision::New;
     }
 
-    TopicDecision::Continue
+    TopicDecision::New
 }
 
 #[cfg(test)]
@@ -152,8 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn gray_zone_stays_continue() {
-        // Moderate current similarity in gray band.
+    fn gray_zone_opens_new_without_s2() {
         let mut q = vec![0.7f32, 0.7, 0.0, 0.0];
         let mut cur = vec![1.0f32, 0.0, 0.0, 0.0];
         crate::l2_normalize(&mut q);
@@ -161,6 +160,6 @@ mod tests {
         let sim = cosine(&q, &cur);
         assert!(sim > 0.35 && sim < 0.75, "sim={sim}");
         let th = S1Thresholds::default();
-        assert_eq!(decide_s1(&q, Some(&cur), &[], &th), TopicDecision::Continue);
+        assert_eq!(decide_s1(&q, Some(&cur), &[], &th), TopicDecision::New);
     }
 }
