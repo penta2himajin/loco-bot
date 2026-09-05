@@ -1,0 +1,17 @@
+[package]
+name = "loco-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "CLI entrypoint for loco-bot (download, doctor, later chat)"
+
+[[bin]]
+name = "loco"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+hf-hub = { workspace = true }
+loco-engine = { workspace = true }

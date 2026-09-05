@@ -1,0 +1,26 @@
+[tools]
+rust = "1.96.0"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "Clippy with warnings denied"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run workspace tests"
+run = "cargo test --workspace"
+
+[tasks.build]
+description = "Build workspace"
+run = "cargo build --workspace"
+
+[tasks.check]
+description = "fmt check + clippy + test"
+run = """
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+"""

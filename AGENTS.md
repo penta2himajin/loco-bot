@@ -1,67 +1,73 @@
-# <Project Name>
+# loco-bot
 
 ## Overview
 
-<!-- One to three paragraphs describing the project's purpose, target domain, and distinguishing characteristics. If detailed specs live under docs/, reference them with @docs/<file>.md. -->
+On-device local agent for laptop and mobile. Inference via **LiteRT-LM** and **Gemma 4 E4B** (first-run model download). Memory will follow chatstream-inspired hierarchical context (implemented in-tree, not as a hard dependency on chatstream). Topic detection (S1) will use **granite-embedding-97m-multilingual-r2**.
+
+Design notes: `docs/research-reports/2026-09-05-local-agent-stack-consultation.md`.
 
 ## Project Structure
 
-<!-- Directory layout with the role of each. Make explicit the boundary between source code, documentation, and generated artifacts. -->
-
 ```
-src/         # ...
-docs/        # ...
-tests/       # ...
+crates/loco-cli/      # CLI binary (`loco`)
+crates/loco-engine/   # model catalog, cache, later LiteRT-LM wiring
+docs/                 # engineering docs (English)
+docs/research-reports/
+git-hooks/            # pre-push fmt/clippy
 ```
 
 ## Development Setup
 
-<!-- Required toolchain pins, bootstrap commands, external dependencies (DB, MCP servers). -->
-
 ```bash
-# example
-cargo install ...
+# Toolchain via mise
+mise trust && mise install
 
-# Pre-push hook (format / lint / clippy).
-cp git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Pre-push hook
+git config core.hooksPath git-hooks
 ```
+
+Requires network for first `loco download` (Hugging Face). Inference native libs arrive in P1.
 
 ## Build & Test
 
-<!-- Canonical verification commands. Must be runnable without prior setup so agents can self-verify. -->
-
 ```bash
 cargo build --workspace
-cargo test  --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
 ```
+
+Or: `mise run build` / `mise run test` / `mise run lint`.
 
 ## Development Principles
 
-<!-- Project-specific additions only. Do not restate the common rules below. Examples:
-- "All features touching target-adjacent columns must be registered in LEAK_FEATURES."
-- "Public API changes require an ADR in docs/decisions/." -->
+- TDD for engine and CLI behavior.
+- Measure before claiming latency/memory bottlenecks (especially vs E4B).
+- Keep a thin boundary around LiteRT-LM FFI so the community binding can be swapped.
 
 ## Architectural Boundaries
 
-<!-- Structural invariants that, if violated, break the design. Examples:
-- "core crate stays domain-agnostic."
-- "Generated code under gen/ is never hand-edited."
-- "Layer X must not depend on layer Y." -->
+- Product binary is **Rust**. Python is allowed only for eval / one-off scripts.
+- `loco-engine` owns model identity and cache layout; CLI stays thin.
+- Memory middleware is deferred until plain E4B chat works (P1 → P2).
+- Do not vendor chatstream as a dependency; reimplement needed ideas.
 
 ## Prohibitions
 
-<!-- Numbered list of "do not" rules, written so each is verifiable. Do not duplicate the common prohibitions below. -->
-
-1. ...
-2. ...
+1. Do not commit `.litertlm` weights or `.env*` secrets.
+2. Do not add Python as the product runtime.
+3. Do not wire memory/topic detection before P1 chat is green.
+4. Do not expand scope into Android packaging during P0–P1.
 
 ## Git Conventions
 
-<!-- Differences from the common rules below. Examples: scoped Conventional Commits like `feat(phase1d):`, mandatory issue links in PR bodies. -->
+- Conventional Commits; agent trailer when an AI authors the commit.
+- Branch prefix: `claude/<topic>`, `codex/<topic>`, or `human/<topic>`.
+- After the remote exists: push after commit, then report. Until then: commit + report only.
 
 ## Session Handoff
 
-Long-running workstreams use GitHub issues for cross-session continuity. See `docs/handoff-protocol.md` for the full protocol.
+Long-running workstreams use GitHub issues for cross-session continuity. See `docs/handoff-protocol.md`.
 
 - Label: `session-handoff`
 - One issue per workstream (not per session)

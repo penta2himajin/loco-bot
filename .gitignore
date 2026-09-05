@@ -1,0 +1,13 @@
+/target/
+/.cargo-home/
+/.cache/
+/models/
+*.litertlm
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
