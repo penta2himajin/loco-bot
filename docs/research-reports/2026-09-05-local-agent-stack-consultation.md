@@ -59,7 +59,7 @@ Build a small on-device agent for mobile and laptop that:
 | **P0** | mise + Rust workspace + model download / doctor CLI |
 | **P1** | LiteRT-LM + E4B plain chat in CLI (streaming) |
 | **P2** | Thin memory (turns + recent-N + simple summary) |
-| **P3** | granite-97m-r2 S1 topic detection |
+| **P3** | granite-97m-r2 S1 topic detection — **landed** (`loco-embed` + session chunks) |
 | **P4** | Context compiler → E4B |
 | **P5** | Small tool surface |
 | **P6** | Needle / reranker / text-only pack as needed |
@@ -143,6 +143,14 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 3. When (if ever) to add Needle 2 and/or a cross-encoder S1b
 4. Japanese UX assumptions and evaluation set for S1 thresholds
 5. Which LiteRT-LM Rust binding to standardize on for P1 (`litertlm-rs` vs alternatives)
+
+## P3 implementation notes (2026-09-05)
+
+- Crate `loco-embed`: cosine + short-query expansion + S1 cascade; optional `ort` feature loads `onnx/model.onnx` (CLS pool, L2 normalize, 384-d).
+- Cache id `granite-97m` downloads `onnx/model.onnx` + `tokenizer.json` from `ibm-granite/granite-embedding-97m-multilingual-r2`.
+- `SessionMemory` persists `chunks` / `current_chunk`; chat logs `[topic: …]` and includes active topic in the system preamble.
+- Default thresholds: continue ≥ 0.75, return ≥ 0.65, new if best < 0.35; gray zone → continue (no S2 yet).
+- Next: P4 context compiler (resident + dynamic chunk on return).
 
 ## References
 

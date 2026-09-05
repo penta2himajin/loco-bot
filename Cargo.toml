@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/loco-engine", "crates/loco-cli", "crates/loco-memory"]
+members = [
+    "crates/loco-engine",
+    "crates/loco-cli",
+    "crates/loco-memory",
+    "crates/loco-embed",
+]
 exclude = [".tmp"]
 
 [workspace.package]
@@ -12,6 +17,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 loco-engine = { path = "crates/loco-engine" }
 loco-memory = { path = "crates/loco-memory" }
+loco-embed = { path = "crates/loco-embed" }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"

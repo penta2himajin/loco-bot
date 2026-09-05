@@ -28,7 +28,12 @@ impl CacheLayout {
     }
 
     pub fn model_path(&self, spec: &ModelSpec) -> PathBuf {
-        self.model_dir(spec.id).join(spec.filename)
+        self.model_file(spec.id, spec.primary_file())
+    }
+
+    /// Path to a specific relative artifact under a model id directory.
+    pub fn model_file(&self, id: ModelId, relative: &str) -> PathBuf {
+        self.model_dir(id).join(relative)
     }
 
     /// Default JSON path for the thin session memory store.

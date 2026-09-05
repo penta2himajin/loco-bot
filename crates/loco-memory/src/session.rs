@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::chunk::TopicChunk;
 use crate::summary::simple_summary;
 use crate::turn::Turn;
 
@@ -20,13 +21,19 @@ pub enum SessionMemoryError {
     Json(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionMemory {
     pub turns: Vec<Turn>,
     /// Rolling text summary of recent turns (no LLM).
     pub summary: String,
     /// How many turns to keep in the recent window / summary.
     pub recent_n: usize,
+    /// Topic chunks indexed by S1 (P3+).
+    #[serde(default)]
+    pub chunks: Vec<TopicChunk>,
+    /// Index into `chunks` for the active topic.
+    #[serde(default)]
+    pub current_chunk: Option<usize>,
 }
 
 impl Default for SessionMemory {
@@ -41,11 +48,18 @@ impl SessionMemory {
             turns: Vec::new(),
             summary: String::new(),
             recent_n: recent_n.max(1),
+            chunks: Vec::new(),
+            current_chunk: None,
         }
     }
 
     pub fn append(&mut self, user: impl Into<String>, assistant: impl Into<String>) {
         self.turns.push(Turn::new(user, assistant));
+        if let Some(i) = self.current_chunk {
+            if let Some(chunk) = self.chunks.get_mut(i) {
+                chunk.turn_end = self.turns.len();
+            }
+        }
         self.refresh_summary();
     }
 
@@ -54,18 +68,72 @@ impl SessionMemory {
         &self.turns[start..]
     }
 
+    pub fn last_user(&self) -> Option<&str> {
+        self.turns.last().map(|t| t.user.as_str())
+    }
+
     pub fn refresh_summary(&mut self) {
         self.summary = simple_summary(&self.turns, self.recent_n, 120);
     }
 
+    /// Open a new topic chunk and make it current.
+    pub fn open_chunk(&mut self, summary: impl Into<String>, embedding: Vec<f32>) -> usize {
+        let id = self.chunks.last().map(|c| c.id + 1).unwrap_or(0);
+        let idx = self.chunks.len();
+        self.chunks
+            .push(TopicChunk::new(id, summary, embedding, self.turns.len()));
+        self.current_chunk = Some(idx);
+        idx
+    }
+
+    /// Switch the active topic to an existing chunk (topic return).
+    pub fn return_to_chunk(&mut self, index: usize) -> bool {
+        if index < self.chunks.len() {
+            self.current_chunk = Some(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn current_embedding(&self) -> Option<&[f32]> {
+        let i = self.current_chunk?;
+        self.chunks.get(i).map(|c| c.embedding.as_slice())
+    }
+
+    /// Past chunks excluding the current one (for S1 return scoring).
+    pub fn past_chunk_embeddings(&self) -> Vec<(usize, &[f32])> {
+        let cur = self.current_chunk;
+        self.chunks
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| Some(*i) != cur)
+            .map(|(i, c)| (i, c.embedding.as_slice()))
+            .collect()
+    }
+
     /// Text suitable for a LiteRT-LM system message `content` field.
     pub fn system_preamble(&self) -> Option<String> {
-        if self.summary.is_empty() {
+        let mut parts = Vec::new();
+        if let Some(i) = self.current_chunk {
+            if let Some(c) = self.chunks.get(i) {
+                if !c.summary.is_empty() {
+                    parts.push(format!("Active topic: {}", c.summary));
+                }
+            }
+        }
+        if !self.summary.is_empty() {
+            parts.push(format!(
+                "Prior session notes (numbered chronologically):\n{}",
+                self.summary
+            ));
+        }
+        if parts.is_empty() {
             return None;
         }
         Some(format!(
-            "You are loco-bot, a local on-device assistant. Prior session notes (most recent first is not required; numbered chronologically):\n{}",
-            self.summary
+            "You are loco-bot, a local on-device assistant. {}",
+            parts.join("\n\n")
         ))
     }
 
@@ -100,6 +168,8 @@ impl SessionMemory {
     pub fn clear(&mut self) {
         self.turns.clear();
         self.summary.clear();
+        self.chunks.clear();
+        self.current_chunk = None;
     }
 }
 
@@ -140,5 +210,36 @@ mod tests {
         let dir = tempdir().unwrap();
         let mem = SessionMemory::load(dir.path().join("nope.json")).unwrap();
         assert!(mem.turns.is_empty());
+    }
+
+    #[test]
+    fn open_chunk_and_return() {
+        let mut mem = SessionMemory::new(4);
+        let i0 = mem.open_chunk("subway", vec![1.0, 0.0]);
+        mem.append("u1", "a1");
+        assert_eq!(mem.chunks[i0].turn_end, 1);
+        let i1 = mem.open_chunk("cooking", vec![0.0, 1.0]);
+        assert_eq!(mem.current_chunk, Some(i1));
+        assert!(mem.return_to_chunk(i0));
+        assert_eq!(mem.current_chunk, Some(i0));
+        let past = mem.past_chunk_embeddings();
+        assert_eq!(past.len(), 1);
+        assert_eq!(past[0].0, i1);
+        let preamble = mem.system_preamble().unwrap();
+        assert!(preamble.contains("Active topic: subway"));
+    }
+
+    #[test]
+    fn loads_legacy_json_without_chunks() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        fs::write(
+            &path,
+            r#"{"turns":[{"user":"hi","assistant":"yo","at":"1"}],"summary":"1. User: hi","recent_n":8}"#,
+        )
+        .unwrap();
+        let mem = SessionMemory::load(&path).unwrap();
+        assert!(mem.chunks.is_empty());
+        assert_eq!(mem.turns.len(), 1);
     }
 }

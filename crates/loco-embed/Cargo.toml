@@ -1,0 +1,24 @@
+[package]
+name = "loco-embed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Granite embedding + S1 topic detection for loco-bot"
+
+[features]
+default = []
+# ONNX Runtime + Hugging Face tokenizers for granite-97m.
+ort = ["dep:ort", "dep:tokenizers"]
+
+[dependencies]
+thiserror = { workspace = true }
+ort = { version = "2.0.0-rc.13", optional = true, default-features = true, features = [
+    "download-binaries",
+] }
+tokenizers = { version = "0.21", optional = true, default-features = false, features = [
+    "onig",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

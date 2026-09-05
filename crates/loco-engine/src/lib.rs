@@ -11,11 +11,11 @@ mod status;
 mod chat;
 
 pub use backend::{BackendParseError, InferenceBackend};
-pub use catalog::{ModelId, ModelSpec, GEMMA4_E4B_IT};
+pub use catalog::{ModelId, ModelSpec, GEMMA4_E4B_IT, GRANITE_97M};
 pub use install::{install_model_file, InstallError};
 pub use paths::{default_cache_root, model_file_path, CacheLayout};
 pub use prompt::{user_message_json, with_session_notes};
-pub use status::{model_status, ModelStatus};
+pub use status::{file_status, model_fully_ready, model_status, ModelStatus};
 
 #[cfg(feature = "inference")]
 pub use chat::{ChatError, ChatSession};

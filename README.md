@@ -1,6 +1,6 @@
 # loco-bot
 
-Small on-device agent for laptop/mobile: **LiteRT-LM + Gemma 4 E4B**, with a chatstream-inspired memory layer planned after plain chat works.
+Small on-device agent for laptop/mobile: **LiteRT-LM + Gemma 4 E4B**, with chatstream-inspired session memory and granite-97m S1 topic detection.
 
 See `docs/research-reports/2026-09-05-local-agent-stack-consultation.md` for stack decisions.
 
@@ -38,26 +38,29 @@ Binary name: `loco`
 cargo run -p loco-cli -- doctor
 cargo run -p loco-cli -- models
 cargo run -p loco-cli -- download gemma4-e4b          # ~3.7GB, first-run download
-cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot reply (+ memory)
+cargo run -p loco-cli -- download granite-97m         # ~415MB ONNX + tokenizer (S1)
+cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot reply (+ memory / S1)
 cargo run -p loco-cli -- chat --backend gpu           # interactive REPL
 cargo run -p loco-cli -- memory show
 cargo run -p loco-cli -- memory clear
 ```
 
-Session memory (P2) stores turns + a rolling text summary under the cache
-(`…/memory/session.json`) and injects it as a system preamble on the next chat.
-Use `--no-memory` to disable.
+Session memory stores turns, a rolling summary, and S1 topic chunks under the cache
+(`…/memory/session.json`). Chat injects notes as a system preamble and logs
+`[topic: continue|new|return]` when granite is cached. Use `--no-memory` or
+`--no-topic` to disable.
 
 Cache default: platform cache dir `/loco-bot/models/…` (override with `--cache-dir` or `LOCO_CACHE_DIR`).
 
-Build notes: LiteRT-LM bindings need `libclang` (`LIBCLANG_PATH` is set in `mise.toml` for macOS CLT). First build downloads a native `liblitert-lm` prebuilt.
+Build notes: LiteRT-LM bindings need `libclang` (`LIBCLANG_PATH` is set in `mise.toml` for macOS CLT). First build downloads a native `liblitert-lm` prebuilt. The `embed` feature pulls ONNX Runtime via `ort`.
 
 ## Layout
 
 ```
 crates/loco-cli/     # CLI entrypoint
 crates/loco-engine/  # model catalog, cache, LiteRT-LM chat
-crates/loco-memory/  # thin session memory
+crates/loco-memory/  # session memory (turns + topic chunks)
+crates/loco-embed/   # granite ONNX + S1 cascade
 docs/research-reports/
 ```
 
