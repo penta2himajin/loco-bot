@@ -9,7 +9,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 #[test]
-fn ja_deixis_s1_logic_suite_passes() {
+fn logic_suites_pass() {
     let suites = load_suites_dir(fixtures_dir()).expect("load fixtures/s1");
     assert!(
         !suites.is_empty(),
@@ -17,13 +17,19 @@ fn ja_deixis_s1_logic_suite_passes() {
     );
 
     let mut failed = 0usize;
+    let mut total = 0usize;
     for (_name, suite) in &suites {
         assert_eq!(suite.version, 1, "unsupported suite version");
         let report = run_suite(suite);
         eprint!("{report}");
+        total += report.passed + report.failed;
         if !report.all_passed() {
             failed += report.failed;
         }
     }
+    assert!(
+        total >= 30,
+        "expected expanded fixture coverage, got {total}"
+    );
     assert_eq!(failed, 0, "{failed} eval case(s) failed");
 }

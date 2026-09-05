@@ -17,7 +17,8 @@ mod ort_granite;
 pub use cosine::{cosine, l2_normalize};
 pub use deixis::{classify_deixis, DeixisKind};
 pub use eval::{
-    load_suite, load_suites_dir, run_suite, CaseResult, EvalCase, EvalError, EvalSuite, SuiteReport,
+    default_granite_dir, granite_ready, load_suite, load_suites_dir, run_suite,
+    run_suite_with_embedder, CaseResult, EvalCase, EvalError, EvalSuite, SuiteReport, TextEmbedder,
 };
 pub use expand::expand_query;
 pub use resolve::{

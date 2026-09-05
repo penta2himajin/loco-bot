@@ -30,5 +30,9 @@ cargo test --workspace
 """
 
 [tasks.eval-s1]
-description = "Run S1/deixis declarative eval fixtures"
+description = "Run S1/deixis declarative eval fixtures (logic)"
 run = "cargo test -p loco-embed --test s1_eval -- --nocapture"
+
+[tasks.eval-s1-onnx]
+description = "Run S1/deixis eval with real granite-97m (skips if uncached)"
+run = "cargo test -p loco-embed --features ort --test s1_eval_onnx -- --nocapture"

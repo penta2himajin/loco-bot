@@ -1,16 +1,16 @@
-//! Declarative S1 / deixis evaluation harness (logic layer).
+//! Declarative S1 / deixis evaluation harness.
 //!
-//! Fixtures live under `fixtures/s1/`. Cases use synthetic embeddings so CI
-//! never needs ONNX or LiteRT-LM. Optional text→embed suites can be added later
-//! behind the `ort` feature.
+//! - Logic fixtures: `fixtures/s1/` (synthetic embeddings; CI-safe).
+//! - ONNX text fixtures: `fixtures/s1_onnx/` (needs `ort` + granite cache).
 
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use thiserror::Error;
 
+use crate::cosine;
 use crate::deixis::{classify_deixis, DeixisKind};
 use crate::expand::expand_query;
 use crate::l2_normalize;
@@ -19,6 +19,34 @@ use crate::resolve::{
     ResolveInput, ResolveOutcome, DEFAULT_AMBIGUITY_DELTA,
 };
 use crate::s1::{ChunkScore, S1Thresholds};
+
+/// Minimal embedder surface for text→vector eval cases.
+pub trait TextEmbedder {
+    fn embed_text(&mut self, text: &str) -> Result<Vec<f32>, String>;
+}
+
+#[cfg(feature = "ort")]
+impl TextEmbedder for crate::GraniteEmbedder {
+    fn embed_text(&mut self, text: &str) -> Result<Vec<f32>, String> {
+        self.embed(text).map_err(|e| e.to_string())
+    }
+}
+
+/// Resolve granite-97m model dir (`LOCO_GRANITE_DIR` or default cache layout).
+pub fn default_granite_dir() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("LOCO_GRANITE_DIR") {
+        return Some(PathBuf::from(p));
+    }
+    let cache = std::env::var_os("LOCO_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| dirs::cache_dir().map(|c| c.join("loco-bot")))?;
+    Some(cache.join("models").join("granite-97m"))
+}
+
+/// True when `onnx/model.onnx` and `tokenizer.json` are present.
+pub fn granite_ready(dir: &Path) -> bool {
+    dir.join("onnx").join("model.onnx").is_file() && dir.join("tokenizer.json").is_file()
+}
 
 #[derive(Debug, Error)]
 pub enum EvalError {
@@ -80,8 +108,55 @@ pub enum EvalCase {
         id: String,
         user: String,
         candidates: Vec<ClarifyCandidateSpec>,
-        expect_action: ActionExpect,
+        #[serde(default)]
+        expect_action: Option<ActionExpect>,
+        /// When true, `match_clarification` must return `None`.
+        #[serde(default)]
+        expect_no_match: bool,
     },
+    /// Embed texts with a real model, then `resolve_topic` (CLI-shaped).
+    ResolveText {
+        id: String,
+        user: String,
+        #[serde(default)]
+        previous_user: Option<String>,
+        /// When true (default), embed `expand_query(user, previous_user)`.
+        #[serde(default = "default_true")]
+        use_expand: bool,
+        #[serde(default)]
+        current_text: Option<String>,
+        #[serde(default)]
+        past_texts: Vec<PastTextSpec>,
+        #[serde(default)]
+        previous_chunk: Option<usize>,
+        #[serde(default)]
+        chunk_labels: Vec<String>,
+        #[serde(default)]
+        thresholds: Option<ThresholdSpec>,
+        #[serde(default)]
+        ambiguity_delta: Option<f32>,
+        expect: OutcomeExpect,
+    },
+    /// Sanity check that related texts rank above unrelated.
+    EmbedRank {
+        id: String,
+        anchor: String,
+        closer: String,
+        farther: String,
+        /// Require `cos(anchor,closer) - cos(anchor,farther) >= min_margin`.
+        #[serde(default)]
+        min_margin: Option<f32>,
+    },
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PastTextSpec {
+    pub index: usize,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -292,13 +367,35 @@ pub fn load_suites_dir(dir: impl AsRef<Path>) -> Result<Vec<(String, EvalSuite)>
     Ok(out)
 }
 
-/// Run all cases in a suite.
+/// Run all logic cases; text cases fail without an embedder.
 pub fn run_suite(suite: &EvalSuite) -> SuiteReport {
     let mut results = Vec::with_capacity(suite.cases.len());
     let mut passed = 0usize;
     let mut failed = 0usize;
     for case in &suite.cases {
-        let result = run_case(case);
+        let result = run_case(case, None);
+        if result.ok {
+            passed += 1;
+        } else {
+            failed += 1;
+        }
+        results.push(result);
+    }
+    SuiteReport {
+        name: suite.name.clone(),
+        passed,
+        failed,
+        results,
+    }
+}
+
+/// Run suite with a text embedder (granite ONNX, etc.).
+pub fn run_suite_with_embedder(suite: &EvalSuite, embedder: &mut dyn TextEmbedder) -> SuiteReport {
+    let mut results = Vec::with_capacity(suite.cases.len());
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    for case in &suite.cases {
+        let result = run_case(case, Some(embedder));
         if result.ok {
             passed += 1;
         } else {
@@ -319,13 +416,15 @@ fn case_id(case: &EvalCase) -> &str {
         EvalCase::Deixis { id, .. }
         | EvalCase::Expand { id, .. }
         | EvalCase::Resolve { id, .. }
-        | EvalCase::ClarifyMatch { id, .. } => id,
+        | EvalCase::ClarifyMatch { id, .. }
+        | EvalCase::ResolveText { id, .. }
+        | EvalCase::EmbedRank { id, .. } => id,
     }
 }
 
-fn run_case(case: &EvalCase) -> CaseResult {
+fn run_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> CaseResult {
     let id = case_id(case).to_string();
-    match eval_case(case) {
+    match eval_case(case, embedder) {
         Ok(()) => CaseResult {
             id,
             ok: true,
@@ -339,7 +438,7 @@ fn run_case(case: &EvalCase) -> CaseResult {
     }
 }
 
-fn eval_case(case: &EvalCase) -> Result<(), String> {
+fn eval_case(case: &EvalCase, embedder: Option<&mut dyn TextEmbedder>) -> Result<(), String> {
     match case {
         EvalCase::Deixis {
             user,
@@ -422,6 +521,7 @@ fn eval_case(case: &EvalCase) -> Result<(), String> {
             user,
             candidates,
             expect_action,
+            expect_no_match,
             ..
         } => {
             let clarification = Clarification {
@@ -435,6 +535,16 @@ fn eval_case(case: &EvalCase) -> Result<(), String> {
                     .collect(),
             };
             let got = match_clarification(user, &clarification);
+            if *expect_no_match {
+                return if got.is_none() {
+                    Ok(())
+                } else {
+                    Err(format!("expected no match, got {got:?}"))
+                };
+            }
+            let expect_action = expect_action.as_ref().ok_or_else(|| {
+                "clarify_match needs expect_action or expect_no_match".to_string()
+            })?;
             match got {
                 Some(action) => {
                     let got_expect = ActionExpect::from_action(action);
@@ -447,6 +557,82 @@ fn eval_case(case: &EvalCase) -> Result<(), String> {
                 }
                 None => Err(format!("no match for `{user}`, expect {expect_action:?}")),
             }
+        }
+        EvalCase::ResolveText {
+            user,
+            previous_user,
+            use_expand,
+            current_text,
+            past_texts,
+            previous_chunk,
+            chunk_labels,
+            thresholds,
+            ambiguity_delta,
+            expect,
+            ..
+        } => {
+            let emb = embedder.ok_or_else(|| {
+                "resolve_text requires an embedder (run_suite_with_embedder)".to_string()
+            })?;
+            let query_text = if *use_expand {
+                expand_query(user, previous_user.as_deref())
+            } else {
+                user.trim().to_string()
+            };
+            let q = emb.embed_text(&query_text)?;
+            let cur_owned = match current_text {
+                Some(t) => Some(emb.embed_text(t)?),
+                None => None,
+            };
+            let past_owned: Vec<(usize, Vec<f32>)> = past_texts
+                .iter()
+                .map(|p| Ok((p.index, emb.embed_text(&p.text)?)))
+                .collect::<Result<_, String>>()?;
+            let past_scores: Vec<ChunkScore<'_>> = past_owned
+                .iter()
+                .map(|(index, e)| ChunkScore {
+                    index: *index,
+                    embedding: e.as_slice(),
+                })
+                .collect();
+            let th = thresholds
+                .as_ref()
+                .map(S1Thresholds::from)
+                .unwrap_or_default();
+            let out = resolve_topic(&ResolveInput {
+                user,
+                query_emb: &q,
+                current: cur_owned.as_deref(),
+                past: &past_scores,
+                previous_chunk: *previous_chunk,
+                chunk_labels,
+                thresholds: th,
+                ambiguity_delta: ambiguity_delta.unwrap_or(DEFAULT_AMBIGUITY_DELTA),
+            });
+            match_outcome(&out, expect)
+        }
+        EvalCase::EmbedRank {
+            anchor,
+            closer,
+            farther,
+            min_margin,
+            ..
+        } => {
+            let emb = embedder.ok_or_else(|| {
+                "embed_rank requires an embedder (run_suite_with_embedder)".to_string()
+            })?;
+            let a = emb.embed_text(anchor)?;
+            let c = emb.embed_text(closer)?;
+            let f = emb.embed_text(farther)?;
+            let close = cosine(&a, &c);
+            let far = cosine(&a, &f);
+            let margin = min_margin.unwrap_or(0.0);
+            if close - far < margin {
+                return Err(format!(
+                    "rank failed: closer={close:.4} farther={far:.4} margin={margin}"
+                ));
+            }
+            Ok(())
         }
     }
 }

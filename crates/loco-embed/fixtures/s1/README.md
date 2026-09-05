@@ -1,4 +1,4 @@
-# S1 / deixis evaluation fixtures
+# S1 / deixis evaluation fixtures (logic)
 
 Declarative cases for the logic layer (no ONNX, no LiteRT-LM).
 
@@ -17,8 +17,8 @@ mise run eval-s1
 | `deixis` | `classify_deixis(user)` |
 | `expand` | `expand_query(user, previous_user)` |
 | `resolve` | `resolve_topic` with synthetic embeddings |
-| `clarify_match` | `match_clarification` |
+| `clarify_match` | `match_clarification` (`expect_no_match` allowed) |
 
 Embeddings may be `"unit": [dim, hot]` or `"vec": [...], "normalize": true`.
 
-Optional ONNX text suites are out of scope for this directory; add later under `fixtures/s1_onnx/` if needed.
+Real granite text suites live in `../s1_onnx/` (`mise run eval-s1-onnx`).

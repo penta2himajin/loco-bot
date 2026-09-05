@@ -173,11 +173,11 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 
 ## P6.0 S1/deixis eval harness (2026-09-06)
 
-- `loco-embed::eval` loads declarative JSON suites; kinds: `deixis` / `expand` / `resolve` / `clarify_match`.
-- Fixtures: `crates/loco-embed/fixtures/s1/` (synthetic embeddings — CI needs no ONNX).
-- Run: `mise run eval-s1` or `cargo test -p loco-embed --test s1_eval`.
-- Seed suite `ja-deixis-s1-logic.json` covers Japanese deixis phrases, stack return, ambiguous clarify, expand rules.
-- Deferred: ONNX text suites, Needle, reranker, text-only pack (still as-needed).
+- `loco-embed::eval` loads declarative JSON suites; kinds: `deixis` / `expand` / `resolve` / `clarify_match` / `resolve_text` / `embed_rank`.
+- Logic fixtures: `crates/loco-embed/fixtures/s1/` (synthetic embeddings — CI needs no ONNX). Seed + edge suites (~36 cases).
+- ONNX fixtures: `crates/loco-embed/fixtures/s1_onnx/` — real granite embed; skip if uncached. Verified 9/9 on Mac cache.
+- Run: `mise run eval-s1` / `mise run eval-s1-onnx`.
+- Deferred: Needle, reranker, text-only pack (still as-needed).
 
 ## References
 
