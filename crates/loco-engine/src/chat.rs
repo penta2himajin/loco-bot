@@ -3,7 +3,9 @@
 use std::io::{self, Write};
 use std::path::Path;
 
-use litertlm_rs::{extract_text, set_min_log_level, Engine, EngineSettings, LogSeverity};
+use litertlm_rs::{
+    extract_text, set_min_log_level, ConversationConfig, Engine, EngineSettings, LogSeverity,
+};
 use thiserror::Error;
 
 use crate::backend::InferenceBackend;
@@ -27,16 +29,27 @@ impl From<litertlm_rs::Error> for ChatError {
 
 /// Loaded engine + conversation for multi-turn chat.
 pub struct ChatSession {
-    // Engine must outlive Conversation; keep both owned here.
-    _engine: Engine,
-    conversation: litertlm_rs::Conversation,
+    // Drop conversation before engine to avoid LiteRT teardown warnings.
+    conversation: Option<litertlm_rs::Conversation>,
+    engine: Option<Engine>,
+}
+
+impl Drop for ChatSession {
+    fn drop(&mut self) {
+        self.conversation.take();
+        self.engine.take();
+    }
 }
 
 impl ChatSession {
-    /// Load `.litertlm` and create a default conversation.
+    /// Load `.litertlm` and create a conversation.
+    ///
+    /// `system_text`, when set, becomes the conversation system message content
+    /// (used to inject a thin memory preamble).
     pub fn open(
         model_path: impl AsRef<Path>,
         backend: InferenceBackend,
+        system_text: Option<&str>,
     ) -> Result<Self, ChatError> {
         let path = model_path.as_ref();
         if !path.is_file() {
@@ -52,11 +65,30 @@ impl ChatSession {
             None,
         )?;
         let engine = Engine::new(&settings)?;
-        let conversation = engine.create_conversation()?;
+
+        let conversation = if let Some(system) = system_text.filter(|s| !s.is_empty()) {
+            let mut config = ConversationConfig::new()?;
+            let system_json = serde_json::json!({
+                "role": "system",
+                "content": system,
+            })
+            .to_string();
+            config.set_system_message(&system_json)?;
+            engine.create_conversation_with_config(&config)?
+        } else {
+            engine.create_conversation()?
+        };
+
         Ok(Self {
-            _engine: engine,
-            conversation,
+            conversation: Some(conversation),
+            engine: Some(engine),
         })
+    }
+
+    fn conversation(&self) -> Result<&litertlm_rs::Conversation, ChatError> {
+        self.conversation
+            .as_ref()
+            .ok_or_else(|| ChatError::LiteRt("conversation already closed".into()))
     }
 
     /// Stream a reply for one user turn; `on_text` receives decoded text deltas.
@@ -65,7 +97,7 @@ impl ChatSession {
         F: FnMut(&str),
     {
         let message_json = user_message_json(user_text);
-        self.conversation
+        self.conversation()?
             .send_message_stream(&message_json, |chunk| {
                 if let Some(err) = chunk.error() {
                     eprintln!("\n[stream error] {err}");
@@ -110,7 +142,7 @@ mod tests {
 
     #[test]
     fn open_missing_model_errors() {
-        let result = ChatSession::open("/no/such/model.litertlm", InferenceBackend::Cpu);
+        let result = ChatSession::open("/no/such/model.litertlm", InferenceBackend::Cpu, None);
         assert!(matches!(result, Err(ChatError::ModelMissing(_))));
     }
 }

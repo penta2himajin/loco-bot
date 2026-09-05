@@ -1,7 +1,7 @@
 # Local Agent Stack Consultation — LiteRT-LM, Gemma 4 E4B, Memory, Embeddings
 
 - **Date**: 2026-09-05
-- **Status**: P0–P1 landed (chat wired; end-to-end needs local model download)
+- **Status**: P0–P2 landed (plain chat + thin session memory)
 - **Scope**: Mobile/laptop small local agent (`loco-bot`)
 
 ## Goal
@@ -34,8 +34,15 @@ Build a small on-device agent for mobile and laptop that:
 
 - CLI: `loco chat [--backend cpu|gpu] [prompt]` (REPL if no prompt).
 - Feature flag: `loco-cli`/`loco-engine` `inference` (default on for CLI).
-- macOS quirk: community prebuilt `liblitert-lm.dylib` has install_name `@rpath/liblitert-lm.so`. Workspace `build.rs` scripts symlink `.so` → `.dylib` beside cargo outputs.
+- macOS quirk: community prebuilt `liblitert-lm.dylib` has install_name `@rpath/liblitert-lm.so`. Workspace `build.rs` scripts symlink `.so` → `.dylib` and set `@loader_path` rpath on the CLI binary.
 - Build needs `LIBCLANG_PATH` for bindgen (set in `mise.toml` for macOS CLT).
+
+### P2 notes (2026-09-05)
+
+- Crate: `loco-memory` — durable turns, recent-N window, rolling text summary (no LLM).
+- Persist path: `<cache>/memory/session.json`.
+- CLI: `loco memory show|clear`; `loco chat` loads summary into system preamble and appends turns (disable with `--no-memory`).
+- GPU smoke (Mac): one-shot `pong` in ~6.3s; CPU ~9.7s for similar prompt. Teardown warnings reduced by dropping Conversation before Engine.
 
 ### Why Rust (not Python-first)
 

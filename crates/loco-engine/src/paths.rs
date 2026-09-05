@@ -30,6 +30,11 @@ impl CacheLayout {
     pub fn model_path(&self, spec: &ModelSpec) -> PathBuf {
         self.model_dir(spec.id).join(spec.filename)
     }
+
+    /// Default JSON path for the thin session memory store.
+    pub fn memory_path(&self) -> PathBuf {
+        self.root.join("memory").join("session.json")
+    }
 }
 
 /// Default cache root: `$XDG_CACHE_HOME/loco-bot` or platform equivalent.
@@ -56,6 +61,15 @@ mod tests {
         assert_eq!(
             layout.model_path(&GEMMA4_E4B_IT),
             PathBuf::from("/tmp/loco-cache/models/gemma4-e4b/gemma-4-E4B-it.litertlm")
+        );
+    }
+
+    #[test]
+    fn memory_path_under_cache_root() {
+        let layout = CacheLayout::new("/tmp/loco-cache");
+        assert_eq!(
+            layout.memory_path(),
+            PathBuf::from("/tmp/loco-cache/memory/session.json")
         );
     }
 }

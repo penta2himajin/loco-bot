@@ -14,7 +14,7 @@ pub use backend::{BackendParseError, InferenceBackend};
 pub use catalog::{ModelId, ModelSpec, GEMMA4_E4B_IT};
 pub use install::{install_model_file, InstallError};
 pub use paths::{default_cache_root, model_file_path, CacheLayout};
-pub use prompt::user_message_json;
+pub use prompt::{user_message_json, with_session_notes};
 pub use status::{model_status, ModelStatus};
 
 #[cfg(feature = "inference")]

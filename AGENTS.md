@@ -10,7 +10,8 @@ Design notes: `docs/research-reports/2026-09-05-local-agent-stack-consultation.m
 
 ```
 crates/loco-cli/      # CLI binary (`loco`)
-crates/loco-engine/   # model catalog, cache, later LiteRT-LM wiring
+crates/loco-engine/   # model catalog, cache, LiteRT-LM chat session
+crates/loco-memory/   # thin session memory (turns / recent-N / summary)
 docs/                 # engineering docs (English)
 docs/research-reports/
 git-hooks/            # pre-push fmt/clippy

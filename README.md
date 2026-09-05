@@ -38,9 +38,15 @@ Binary name: `loco`
 cargo run -p loco-cli -- doctor
 cargo run -p loco-cli -- models
 cargo run -p loco-cli -- download gemma4-e4b          # ~3.7GB, first-run download
-cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot streaming reply
+cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot reply (+ memory)
 cargo run -p loco-cli -- chat --backend gpu           # interactive REPL
+cargo run -p loco-cli -- memory show
+cargo run -p loco-cli -- memory clear
 ```
+
+Session memory (P2) stores turns + a rolling text summary under the cache
+(`…/memory/session.json`) and injects it as a system preamble on the next chat.
+Use `--no-memory` to disable.
 
 Cache default: platform cache dir `/loco-bot/models/…` (override with `--cache-dir` or `LOCO_CACHE_DIR`).
 
@@ -50,7 +56,8 @@ Build notes: LiteRT-LM bindings need `libclang` (`LIBCLANG_PATH` is set in `mise
 
 ```
 crates/loco-cli/     # CLI entrypoint
-crates/loco-engine/  # model catalog, cache paths, readiness
+crates/loco-engine/  # model catalog, cache, LiteRT-LM chat
+crates/loco-memory/  # thin session memory
 docs/research-reports/
 ```
 

@@ -8,9 +8,10 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
 use loco_engine::{
-    install_model_file, model_status, CacheLayout, InferenceBackend, ModelId, ModelSpec,
-    ModelStatus, GEMMA4_E4B_IT,
+    install_model_file, model_status, with_session_notes, CacheLayout, InferenceBackend, ModelId,
+    ModelSpec, ModelStatus, GEMMA4_E4B_IT,
 };
+use loco_memory::SessionMemory;
 
 #[cfg(feature = "inference")]
 use loco_engine::ChatSession;
@@ -44,6 +45,11 @@ enum Commands {
     },
     /// List known models and whether they are cached.
     Models,
+    /// Inspect or clear thin session memory.
+    Memory {
+        #[command(subcommand)]
+        action: MemoryCmd,
+    },
     /// Chat with the local Gemma 4 E4B model (streaming).
     Chat {
         /// Model id (default: gemma4-e4b).
@@ -52,9 +58,20 @@ enum Commands {
         /// Inference backend: cpu or gpu (metal maps to gpu).
         #[arg(long, default_value = "cpu")]
         backend: String,
+        /// Do not load/save session memory.
+        #[arg(long)]
+        no_memory: bool,
         /// Optional one-shot prompt. If omitted, starts an interactive REPL.
         prompt: Option<String>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum MemoryCmd {
+    /// Show turn count and rolling summary.
+    Show,
+    /// Delete persisted session memory.
+    Clear,
 }
 
 fn main() -> ExitCode {
@@ -78,11 +95,13 @@ fn run() -> Result<()> {
         Commands::Doctor => cmd_doctor(&layout),
         Commands::Download { model, force } => cmd_download(&layout, &model, force),
         Commands::Models => cmd_models(&layout),
+        Commands::Memory { action } => cmd_memory(&layout, action),
         Commands::Chat {
             model,
             backend,
+            no_memory,
             prompt,
-        } => cmd_chat(&layout, &model, &backend, prompt.as_deref()),
+        } => cmd_chat(&layout, &model, &backend, no_memory, prompt.as_deref()),
     }
 }
 
@@ -93,6 +112,12 @@ fn cmd_doctor(layout: &CacheLayout) -> Result<()> {
     println!("  inference:  enabled (LiteRT-LM)");
     #[cfg(not(feature = "inference"))]
     println!("  inference:  disabled (build with --features inference)");
+    let mem = SessionMemory::load(layout.memory_path()).unwrap_or_default();
+    println!(
+        "  memory:     {} turns ({})",
+        mem.turns.len(),
+        layout.memory_path().display()
+    );
     println!();
 
     let status = model_status(layout, ModelId::Gemma4E4b);
@@ -109,6 +134,33 @@ fn cmd_doctor(layout: &CacheLayout) -> Result<()> {
 fn cmd_models(layout: &CacheLayout) -> Result<()> {
     let status = model_status(layout, ModelId::Gemma4E4b);
     print_status(&GEMMA4_E4B_IT, &status);
+    Ok(())
+}
+
+fn cmd_memory(layout: &CacheLayout, action: MemoryCmd) -> Result<()> {
+    let path = layout.memory_path();
+    match action {
+        MemoryCmd::Show => {
+            let mem = SessionMemory::load(&path)?;
+            println!("memory file: {}", path.display());
+            println!("turns: {}", mem.turns.len());
+            println!("recent_n: {}", mem.recent_n);
+            if mem.summary.is_empty() {
+                println!("summary: (empty)");
+            } else {
+                println!("summary:\n{}", mem.summary);
+            }
+        }
+        MemoryCmd::Clear => {
+            if path.exists() {
+                std::fs::remove_file(&path)
+                    .with_context(|| format!("remove {}", path.display()))?;
+                println!("cleared {}", path.display());
+            } else {
+                println!("nothing to clear ({})", path.display());
+            }
+        }
+    }
     Ok(())
 }
 
@@ -174,10 +226,16 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_chat(layout: &CacheLayout, model: &str, backend: &str, prompt: Option<&str>) -> Result<()> {
+fn cmd_chat(
+    layout: &CacheLayout,
+    model: &str,
+    backend: &str,
+    no_memory: bool,
+    prompt: Option<&str>,
+) -> Result<()> {
     #[cfg(not(feature = "inference"))]
     {
-        let _ = (layout, model, backend, prompt);
+        let _ = (layout, model, backend, no_memory, prompt);
         bail!("chat requires the `inference` feature (default for loco-cli)");
     }
 
@@ -199,21 +257,44 @@ fn cmd_chat(layout: &CacheLayout, model: &str, backend: &str, prompt: Option<&st
             }
         };
 
+        let memory_path = layout.memory_path();
+        let mut memory = if no_memory {
+            SessionMemory::default()
+        } else {
+            SessionMemory::load(&memory_path).context("load session memory")?
+        };
+        let notes = if no_memory {
+            None
+        } else {
+            memory.system_preamble()
+        };
+
         eprintln!(
             "loading {} ({backend}) from {} …",
             ModelSpec::for_id(id).display_name,
             path.display()
         );
-        let mut session = ChatSession::open(&path, backend).context("open chat session")?;
+        if let Some(ref p) = notes {
+            eprintln!("memory: will attach {} chars of session notes", p.len());
+        } else if !no_memory {
+            eprintln!("memory: empty ({})", memory_path.display());
+        }
+        let mut session =
+            ChatSession::open(&path, backend, notes.as_deref()).context("open chat session")?;
         eprintln!("ready.\n");
 
         if let Some(one_shot) = prompt {
-            session
-                .reply_to_stdout(one_shot)
-                .context("generate reply")?;
+            let payload = with_session_notes(notes.as_deref(), one_shot);
+            let reply = session.reply(&payload).context("generate reply")?;
+            println!("{reply}");
+            if !no_memory {
+                memory.append(one_shot, &reply);
+                memory.save(&memory_path).context("save session memory")?;
+            }
             return Ok(());
         }
 
+        let mut attach_notes = notes.is_some();
         let stdin = io::stdin();
         loop {
             print!("> ");
@@ -231,8 +312,32 @@ fn cmd_chat(layout: &CacheLayout, model: &str, backend: &str, prompt: Option<&st
             if matches!(text, "/quit" | "/exit" | ":q") {
                 break;
             }
-            if let Err(err) = session.reply_to_stdout(text) {
-                eprintln!("[error] {err}");
+            if text == "/memory" {
+                println!("turns: {}", memory.turns.len());
+                if memory.summary.is_empty() {
+                    println!("summary: (empty)");
+                } else {
+                    println!("{}", memory.summary);
+                }
+                continue;
+            }
+            let payload = if attach_notes {
+                attach_notes = false;
+                with_session_notes(notes.as_deref(), text)
+            } else {
+                text.to_string()
+            };
+            match session.reply(&payload) {
+                Ok(reply) => {
+                    println!("{reply}");
+                    if !no_memory {
+                        memory.append(text, &reply);
+                        if let Err(err) = memory.save(&memory_path) {
+                            eprintln!("[memory] save failed: {err}");
+                        }
+                    }
+                }
+                Err(err) => eprintln!("[error] {err}"),
             }
             println!();
         }
