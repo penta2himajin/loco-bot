@@ -8,7 +8,8 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
 use loco_engine::{
-    model_status, CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT,
+    install_model_file, model_status, CacheLayout, InferenceBackend, ModelId, ModelSpec,
+    ModelStatus, GEMMA4_E4B_IT,
 };
 
 #[cfg(feature = "inference")]
@@ -138,6 +139,7 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
     let spec = ModelSpec::for_id(id);
     let dest = layout.model_path(spec);
 
+    // `is_file` follows symlinks; a broken HF-style link counts as missing.
     if dest.is_file() && !force {
         let bytes = std::fs::metadata(&dest)?.len();
         println!(
@@ -147,9 +149,6 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
         );
         return Ok(());
     }
-
-    std::fs::create_dir_all(dest.parent().expect("model path has parent"))
-        .with_context(|| format!("create {}", dest.parent().unwrap().display()))?;
 
     println!(
         "downloading {} from Hugging Face ({}/{}) …",
@@ -165,21 +164,8 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
         .get(spec.filename)
         .with_context(|| format!("download {}/{}", spec.hf_repo, spec.filename))?;
 
-    if force && dest.exists() {
-        std::fs::remove_file(&dest).ok();
-    }
-    // Prefer a stable path under our cache; hard-link when possible, else copy.
-    if let Err(err) = std::fs::hard_link(&cached, &dest) {
-        std::fs::copy(&cached, &dest).with_context(|| {
-            format!(
-                "copy downloaded file into cache (hard_link failed: {err}): {} -> {}",
-                cached.display(),
-                dest.display()
-            )
-        })?;
-    }
-
-    let bytes = std::fs::metadata(&dest)?.len();
+    let bytes = install_model_file(&cached, &dest)
+        .with_context(|| format!("install into {}", dest.display()))?;
     println!(
         "ready: {} ({:.1} MB)",
         dest.display(),
