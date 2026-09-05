@@ -340,15 +340,27 @@ pub fn load_suite(path: impl AsRef<Path>) -> Result<EvalSuite, EvalError> {
 }
 
 /// Load every `*.json` suite under a directory (non-recursive).
+///
+/// Skips meta files such as `coverage_map.json` (pattern inventory, not a suite).
 pub fn load_suites_dir(dir: impl AsRef<Path>) -> Result<Vec<(String, EvalSuite)>, EvalError> {
     let mut out = Vec::new();
     let mut entries: Vec<_> = fs::read_dir(dir.as_ref())?
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.path()
+            let path = e.path();
+            let is_json = path
                 .extension()
                 .and_then(|x| x.to_str())
-                .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+                .is_some_and(|x| x.eq_ignore_ascii_case("json"));
+            if !is_json {
+                return false;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            // Meta / inventory files live beside suites but are not EvalSuite.
+            stem != "coverage_map"
         })
         .collect();
     entries.sort_by_key(|e| e.file_name());

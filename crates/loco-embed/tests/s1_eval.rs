@@ -28,7 +28,7 @@ fn logic_suites_pass() {
         }
     }
     assert!(
-        total >= 30,
+        total >= 90,
         "expected expanded fixture coverage, got {total}"
     );
     assert_eq!(failed, 0, "{failed} eval case(s) failed");

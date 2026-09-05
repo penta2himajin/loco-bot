@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "name": "ja-bekko-coverage",
+  "cases": [
+    {
+      "kind": "embed_rank",
+      "id": "rank_weather_over_curry",
+      "anchor": "明日の天気予報を教えて",
+      "closer": "Will I need an umbrella tomorrow?",
+      "farther": "カレーの作り方を詳しく教えて",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_subway_home",
+      "user": "発車ホームはどこ？",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        {
+          "index": 1,
+          "text": "明日の天気予報を教えて"
+        }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": [
+        "地下鉄",
+        "天気"
+      ],
+      "expect": {
+        "outcome": "Continue"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_expand_curry",
+      "user": "なぜ？",
+      "previous_user": "カレーの作り方を詳しく教えて",
+      "use_expand": true,
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "東京の地下鉄の切符の買い方"
+        }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": [
+        "地下鉄",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Continue"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_expand_weather",
+      "user": "もっと詳しく",
+      "previous_user": "明日の天気予報を教えて",
+      "use_expand": true,
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": [
+        "天気",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Continue"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_piano_two_pasts",
+      "user": "ピアノの調律はどうする",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "東京の地下鉄の切符の買い方"
+        },
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": [
+        "地下鉄",
+        "カレー",
+        "天気"
+      ],
+      "expect": {
+        "outcome": "New"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_empty_baseball",
+      "user": "プロ野球の指名打者制度とは",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [],
+      "chunk_labels": [
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "New"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_empty_iss",
+      "user": "国際宇宙ステーションの高さ",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [],
+      "chunk_labels": [
+        "地下鉄"
+      ],
+      "expect": {
+        "outcome": "New"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_named_return_curry",
+      "user": "さっきのカレーの話に戻って",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": [
+        "地下鉄",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Return",
+        "chunk_index": 1
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_named_return_weather",
+      "user": "さっきの天気の話に戻って",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "明日の天気予報を教えて"
+        }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": [
+        "天気",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Return",
+        "chunk_index": 0
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_ru_stack_return_2",
+      "user": "さっきの話に戻って",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "東京の地下鉄の切符の買い方"
+        }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": [
+        "地下鉄",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Return",
+        "chunk_index": 0
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_ru_stack_return_3",
+      "user": "前の話なんだけど",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": [
+        "天気",
+        "カレー"
+      ],
+      "expect": {
+        "outcome": "Return",
+        "chunk_index": 1
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_ru_multipast_clarify_2",
+      "user": "さっきの話",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "東京の地下鉄の切符の買い方"
+        },
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "chunk_labels": [
+        "地下鉄",
+        "カレー",
+        "天気"
+      ],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_ru_multipast_clarify_3",
+      "user": "earlier",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        {
+          "index": 0,
+          "text": "東京の地下鉄の切符の買い方"
+        },
+        {
+          "index": 1,
+          "text": "カレーの作り方を詳しく教えて"
+        }
+      ],
+      "chunk_labels": [
+        "地下鉄",
+        "カレー",
+        "天気"
+      ],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    }
+  ]
+}

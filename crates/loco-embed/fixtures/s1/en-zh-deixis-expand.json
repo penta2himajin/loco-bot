@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "name": "en-zh-deixis-expand",
+  "cases": [
+    {
+      "kind": "deixis",
+      "id": "deixis_en_plain_curry",
+      "user": "Teach me how to make curry",
+      "expect_deixis": "Plain"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_en_named_weather",
+      "user": "back to the weather discussion",
+      "expect_deixis": "ReturnNamed"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_en_continue_why",
+      "user": "why?",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_zh_plain_subway",
+      "user": "介绍一下东京地铁",
+      "expect_deixis": "Plain"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_zh_named_curry",
+      "user": "回到刚才咖喱的话题",
+      "expect_deixis": "ReturnNamed"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_zh_unspecified",
+      "user": "回到刚才的话题",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_zh_continue_why",
+      "user": "为什么？",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_zh_continue_more",
+      "user": "再说详细一点",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_en_why_prepends",
+      "user": "why?",
+      "previous_user": "How to buy Tokyo subway tickets",
+      "expect_expanded_contains": "subway"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_en_more_prepends",
+      "user": "tell me more",
+      "previous_user": "Detailed curry recipe",
+      "expect_expanded_contains": "curry"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_en_return_clean",
+      "user": "go back to the subway topic",
+      "previous_user": "Detailed curry recipe",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "expand",
+      "id": "expand_zh_why_prepends",
+      "user": "为什么？",
+      "previous_user": "如何购买东京地铁票",
+      "expect_expanded_contains": "地铁"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_zh_more_prepends",
+      "user": "再说详细一点",
+      "previous_user": "详细的咖喱做法",
+      "expect_expanded_contains": "咖喱"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_zh_return_clean",
+      "user": "回到刚才地铁的话题",
+      "previous_user": "详细的咖喱做法",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_en_ru_stack_return",
+      "user": "earlier",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 1] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_zh_ru_stack_return",
+      "user": "回到刚才的话题",
+      "query_emb": { "unit": [4, 1] },
+      "current": { "unit": [4, 2] },
+      "past": [{ "index": 1, "unit": [4, 1] }],
+      "previous_chunk": 1,
+      "chunk_labels": ["a", "curry", "now"],
+      "expect": { "outcome": "Return", "chunk_index": 1 }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_zh_ru_multipast_clarify",
+      "user": "回到刚才的话题",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 2] },
+      "past": [
+        { "index": 0, "unit": [4, 0] },
+        { "index": 1, "unit": [4, 1] }
+      ],
+      "chunk_labels": ["地铁", "咖喱", "天气"],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    }
+  ]
+}

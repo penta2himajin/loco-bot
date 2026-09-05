@@ -42,6 +42,10 @@ pub(crate) fn looks_topic_return(s: &str) -> bool {
         "go back",
         "back to",
         "earlier",
+        "回到",
+        "刚才的话",
+        "之前的话题",
+        "上一个话题",
     ];
     MARKERS.iter().any(|m| lower.contains(m))
 }
@@ -69,6 +73,16 @@ pub(crate) fn topic_cue_residue(s: &str) -> String {
         "話",
         "について",
         "教えて",
+        "回到刚才的",
+        "回到刚才",
+        "回到",
+        "刚才的话",
+        "刚才的",
+        "刚才",
+        "之前的话题",
+        "上一个话题",
+        "的话题",
+        "话题",
     ];
     for m in STRIP {
         t = t.replace(m, "");
@@ -113,6 +127,10 @@ fn looks_continue_deixis(s: &str) -> bool {
         "it's",
         "what about",
         "and the",
+        "那个",
+        "这个",
+        "关于这个",
+        "关于那个",
     ];
     MARKERS.iter().any(|m| lower.contains(m))
 }
@@ -135,6 +153,10 @@ fn looks_bare_followup(s: &str) -> bool {
         "ok",
         "yes",
         "no",
+        "为什么",
+        "详细一点",
+        "再说详细",
+        "继续",
     ];
     let lower = s.to_lowercase();
     BARE.iter().any(|m| lower.contains(m)) || chars <= 4
@@ -176,5 +198,25 @@ mod tests {
     fn plain_topical() {
         assert_eq!(classify_deixis("カレーの作り方を一言"), DeixisKind::Plain);
         assert_eq!(classify_deixis("地下鉄について一言"), DeixisKind::Plain);
+    }
+
+    #[test]
+    fn en_and_zh_return_and_continue() {
+        assert_eq!(
+            classify_deixis("go back to the subway topic"),
+            DeixisKind::ReturnNamed
+        );
+        assert_eq!(classify_deixis("earlier"), DeixisKind::ReturnUnspecified);
+        assert_eq!(classify_deixis("why?"), DeixisKind::ContinueHint);
+        assert_eq!(
+            classify_deixis("回到刚才地铁的话题"),
+            DeixisKind::ReturnNamed
+        );
+        assert_eq!(
+            classify_deixis("回到刚才的话题"),
+            DeixisKind::ReturnUnspecified
+        );
+        assert_eq!(classify_deixis("为什么？"), DeixisKind::ContinueHint);
+        assert_eq!(classify_deixis("再说详细一点"), DeixisKind::ContinueHint);
     }
 }
