@@ -1,12 +1,19 @@
-//! Model catalog, cache layout, and readiness checks for loco-bot.
-//!
-//! LiteRT-LM inference wiring lands in a later phase; this crate owns paths
-//! and model identity so the CLI can download and verify assets first.
+//! Model catalog, cache layout, readiness checks, and LiteRT-LM chat.
 
+mod backend;
 mod catalog;
 mod paths;
+mod prompt;
 mod status;
 
+#[cfg(feature = "inference")]
+mod chat;
+
+pub use backend::{BackendParseError, InferenceBackend};
 pub use catalog::{ModelId, ModelSpec, GEMMA4_E4B_IT};
 pub use paths::{default_cache_root, model_file_path, CacheLayout};
+pub use prompt::user_message_json;
 pub use status::{model_status, ModelStatus};
+
+#[cfg(feature = "inference")]
+pub use chat::{ChatError, ChatSession};

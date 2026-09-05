@@ -1,7 +1,7 @@
 # Local Agent Stack Consultation — LiteRT-LM, Gemma 4 E4B, Memory, Embeddings
 
 - **Date**: 2026-09-05
-- **Status**: Decisions locked; P0 implementation underway
+- **Status**: P0–P1 landed (chat wired; end-to-end needs local model download)
 - **Scope**: Mobile/laptop small local agent (`loco-bot`)
 
 ## Goal
@@ -28,6 +28,14 @@ Build a small on-device agent for mobile and laptop that:
 | Toolchain | **mise** | Pin Rust (and later helpers) via repo `mise.toml` |
 | First UI | CLI on laptop | Android / other shells after plain chat works |
 | Memory timing | After plain chat | No memory middleware until E4B conversation path is green |
+| LiteRT-LM Rust binding | `litertlm-rs` 0.16.x | Thin wrap in `loco-engine::ChatSession`; swap-friendly |
+
+### P1 notes (2026-09-05)
+
+- CLI: `loco chat [--backend cpu|gpu] [prompt]` (REPL if no prompt).
+- Feature flag: `loco-cli`/`loco-engine` `inference` (default on for CLI).
+- macOS quirk: community prebuilt `liblitert-lm.dylib` has install_name `@rpath/liblitert-lm.so`. Workspace `build.rs` scripts symlink `.so` → `.dylib` beside cargo outputs.
+- Build needs `LIBCLANG_PATH` for bindgen (set in `mise.toml` for macOS CLT).
 
 ### Why Rust (not Python-first)
 

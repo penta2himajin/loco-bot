@@ -4,12 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Model catalog, cache paths, and (later) LiteRT-LM wiring for loco-bot"
+description = "Model catalog, cache paths, and LiteRT-LM chat session for loco-bot"
+
+[features]
+default = []
+# Links LiteRT-LM native prebuilts (needs libclang at build time).
+inference = ["dep:litertlm-rs"]
 
 [dependencies]
 dirs = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+litertlm-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -30,19 +30,21 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-## CLI (P0)
+## CLI
 
 Binary name: `loco`
 
 ```bash
 cargo run -p loco-cli -- doctor
 cargo run -p loco-cli -- models
-cargo run -p loco-cli -- download gemma4-e4b   # ~3.6GB, first-run download
+cargo run -p loco-cli -- download gemma4-e4b          # ~3.7GB, first-run download
+cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot streaming reply
+cargo run -p loco-cli -- chat --backend gpu           # interactive REPL
 ```
 
 Cache default: platform cache dir `/loco-bot/models/…` (override with `--cache-dir` or `LOCO_CACHE_DIR`).
 
-Chat / LiteRT-LM inference lands in **P1**.
+Build notes: LiteRT-LM bindings need `libclang` (`LIBCLANG_PATH` is set in `mise.toml` for macOS CLT). First build downloads a native `liblitert-lm` prebuilt.
 
 ## Layout
 

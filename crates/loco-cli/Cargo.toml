@@ -4,14 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "CLI entrypoint for loco-bot (download, doctor, later chat)"
+description = "CLI entrypoint for loco-bot (download, doctor, chat)"
 
 [[bin]]
 name = "loco"
 path = "src/main.rs"
+
+[features]
+default = ["inference"]
+inference = ["loco-engine/inference"]
 
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
 hf-hub = { workspace = true }
 loco-engine = { workspace = true }
+serde_json = { workspace = true }

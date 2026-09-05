@@ -26,7 +26,7 @@ mise trust && mise install
 git config core.hooksPath git-hooks
 ```
 
-Requires network for first `loco download` (Hugging Face). Inference native libs arrive in P1.
+Requires network for first `loco download` (Hugging Face) and first build of the `inference` feature (LiteRT-LM C API prebuilt). Set `LIBCLANG_PATH` if bindgen cannot find libclang (see `mise.toml`).
 
 ## Build & Test
 

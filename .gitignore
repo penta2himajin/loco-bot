@@ -1,6 +1,7 @@
 /target/
 /.cargo-home/
 /.cache/
+/.tmp/
 /models/
 *.litertlm
 .env

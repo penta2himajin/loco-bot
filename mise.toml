@@ -1,6 +1,10 @@
 [tools]
 rust = "1.96.0"
 
+# bindgen (litertlm-sys) needs libclang. Override if your install differs.
+[env]
+LIBCLANG_PATH = "/Library/Developer/CommandLineTools/usr/lib"
+
 [tasks.fmt]
 description = "Format Rust sources"
 run = "cargo fmt --all"
@@ -14,7 +18,7 @@ description = "Run workspace tests"
 run = "cargo test --workspace"
 
 [tasks.build]
-description = "Build workspace"
+description = "Build workspace (includes LiteRT-LM native link)"
 run = "cargo build --workspace"
 
 [tasks.check]

@@ -1,12 +1,18 @@
 //! loco — CLI for the loco-bot local agent.
 
+use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
-use loco_engine::{model_status, CacheLayout, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT};
+use loco_engine::{
+    model_status, CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, GEMMA4_E4B_IT,
+};
+
+#[cfg(feature = "inference")]
+use loco_engine::ChatSession;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -37,6 +43,17 @@ enum Commands {
     },
     /// List known models and whether they are cached.
     Models,
+    /// Chat with the local Gemma 4 E4B model (streaming).
+    Chat {
+        /// Model id (default: gemma4-e4b).
+        #[arg(long, default_value = "gemma4-e4b")]
+        model: String,
+        /// Inference backend: cpu or gpu (metal maps to gpu).
+        #[arg(long, default_value = "cpu")]
+        backend: String,
+        /// Optional one-shot prompt. If omitted, starts an interactive REPL.
+        prompt: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -60,12 +77,21 @@ fn run() -> Result<()> {
         Commands::Doctor => cmd_doctor(&layout),
         Commands::Download { model, force } => cmd_download(&layout, &model, force),
         Commands::Models => cmd_models(&layout),
+        Commands::Chat {
+            model,
+            backend,
+            prompt,
+        } => cmd_chat(&layout, &model, &backend, prompt.as_deref()),
     }
 }
 
 fn cmd_doctor(layout: &CacheLayout) -> Result<()> {
     println!("loco-bot doctor");
     println!("  cache root: {}", layout.root().display());
+    #[cfg(feature = "inference")]
+    println!("  inference:  enabled (LiteRT-LM)");
+    #[cfg(not(feature = "inference"))]
+    println!("  inference:  disabled (build with --features inference)");
     println!();
 
     let status = model_status(layout, ModelId::Gemma4E4b);
@@ -160,4 +186,70 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
         bytes as f64 / (1024.0 * 1024.0)
     );
     Ok(())
+}
+
+fn cmd_chat(layout: &CacheLayout, model: &str, backend: &str, prompt: Option<&str>) -> Result<()> {
+    #[cfg(not(feature = "inference"))]
+    {
+        let _ = (layout, model, backend, prompt);
+        bail!("chat requires the `inference` feature (default for loco-cli)");
+    }
+
+    #[cfg(feature = "inference")]
+    {
+        let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
+        let backend = InferenceBackend::parse(backend)?;
+        let path = match model_status(layout, id) {
+            ModelStatus::Present { path, bytes } if bytes > 0 => path,
+            ModelStatus::Missing { expected } => {
+                bail!(
+                    "model not ready at {}. Run: loco download {}",
+                    expected.display(),
+                    id
+                );
+            }
+            ModelStatus::Present { path, .. } => {
+                bail!("model file is empty: {}", path.display());
+            }
+        };
+
+        eprintln!(
+            "loading {} ({backend}) from {} …",
+            ModelSpec::for_id(id).display_name,
+            path.display()
+        );
+        let mut session = ChatSession::open(&path, backend).context("open chat session")?;
+        eprintln!("ready.\n");
+
+        if let Some(one_shot) = prompt {
+            session
+                .reply_to_stdout(one_shot)
+                .context("generate reply")?;
+            return Ok(());
+        }
+
+        let stdin = io::stdin();
+        loop {
+            print!("> ");
+            io::stdout().flush().ok();
+            let mut line = String::new();
+            let n = stdin.lock().read_line(&mut line)?;
+            if n == 0 {
+                println!();
+                break;
+            }
+            let text = line.trim();
+            if text.is_empty() {
+                continue;
+            }
+            if matches!(text, "/quit" | "/exit" | ":q") {
+                break;
+            }
+            if let Err(err) = session.reply_to_stdout(text) {
+                eprintln!("[error] {err}");
+            }
+            println!();
+        }
+        Ok(())
+    }
 }
