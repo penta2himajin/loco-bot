@@ -1,14 +1,14 @@
 //! S1 topic cascade: continue / new / return via cosine vs chunk embeddings.
 //!
-//! Default thresholds were calibrated against granite-97m CLS embeddings
-//! (2026-09-06, Mac cache): true Continue/Return pairs scored ≈0.80–0.90,
-//! while hard negatives (e.g. quantum vs curry) sat ≈0.71–0.73. Setting
-//! `continue_min` / `return_min` to 0.78 separates those bands; the residual
-//! gray zone escalates to [`crate::s2`].
+//! Default thresholds were calibrated against bekko-a8m mean-pooled embeddings
+//! (2026-09-06): true Continue/Return pairs scored ≈0.28–0.35, while hard
+//! negatives (New vs past topics) sat ≈0.04–0.16. Setting `continue_min` /
+//! `return_min` to 0.26 and `new_max` to 0.20 separates those bands; the
+//! residual gray zone escalates to [`crate::s2`].
 
 use crate::cosine::cosine;
 
-/// Tunable thresholds (granite-97m calibrated defaults).
+/// Tunable thresholds (bekko-a8m calibrated defaults).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct S1Thresholds {
     /// Current-chunk cosine at or above this → Continue.
@@ -21,17 +21,17 @@ pub struct S1Thresholds {
 
 impl Default for S1Thresholds {
     fn default() -> Self {
-        Self::granite_calibrated()
+        Self::bekko_calibrated()
     }
 }
 
 impl S1Thresholds {
-    /// Thresholds measured against granite-97m multilingual-r2 (CLS + L2).
-    pub const fn granite_calibrated() -> Self {
+    /// Thresholds measured against bekko-embedding-v1-a8m (mean pool + L2).
+    pub const fn bekko_calibrated() -> Self {
         Self {
-            continue_min: 0.78,
-            return_min: 0.78,
-            new_max: 0.50,
+            continue_min: 0.26,
+            return_min: 0.26,
+            new_max: 0.20,
         }
     }
 }
@@ -219,7 +219,11 @@ mod tests {
         crate::l2_normalize(&mut q);
         crate::l2_normalize(&mut cur);
         let sim = cosine(&q, &cur);
-        let th = S1Thresholds::default();
+        let th = S1Thresholds {
+            continue_min: 0.90,
+            return_min: 0.90,
+            new_max: 0.50,
+        };
         assert!(
             sim > th.new_max && sim < th.continue_min,
             "sim={sim} th={th:?}"
@@ -236,11 +240,12 @@ mod tests {
 
     #[test]
     fn calibrated_defaults_split_measured_bands() {
-        let th = S1Thresholds::granite_calibrated();
-        assert!((th.continue_min - 0.78).abs() < f32::EPSILON);
-        assert!((th.return_min - 0.78).abs() < f32::EPSILON);
-        // Positive band (~0.80+) above; hard-negative band (~0.73) below.
-        assert!(0.82 >= th.return_min);
-        assert!(0.73 < th.return_min);
+        let th = S1Thresholds::bekko_calibrated();
+        assert!((th.continue_min - 0.26).abs() < f32::EPSILON);
+        assert!((th.return_min - 0.26).abs() < f32::EPSILON);
+        assert!((th.new_max - 0.20).abs() < f32::EPSILON);
+        // Positive band (~0.28+) above; hard-negative max (~0.16) below new_max.
+        assert!(0.28 >= th.continue_min);
+        assert!(0.16 < th.new_max);
     }
 }

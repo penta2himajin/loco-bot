@@ -21,4 +21,4 @@ mise run eval-s1
 
 Embeddings may be `"unit": [dim, hot]` or `"vec": [...], "normalize": true`.
 
-Real granite text suites live in `../s1_onnx/` (`mise run eval-s1-onnx`).
+Real bekko text suites live in `../s1_onnx/` (`mise run eval-s1-onnx`).

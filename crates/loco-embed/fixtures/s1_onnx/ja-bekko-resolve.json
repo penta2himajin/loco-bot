@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "ja-granite-resolve",
+  "name": "ja-bekko-resolve",
   "cases": [
     {
       "kind": "embed_rank",
@@ -154,13 +154,12 @@
     {
       "kind": "resolve_text",
       "id": "onnx_ambiguous_past_clarify",
-      "user": "関連する話に戻したい",
+      "user": "さっきの話に戻って",
       "current_text": "明日の天気予報を教えて",
       "past_texts": [
         { "index": 0, "text": "東京の地下鉄の切符の買い方" },
         { "index": 1, "text": "カレーの作り方を詳しく教えて" }
       ],
-      "previous_chunk": 0,
       "chunk_labels": ["地下鉄", "カレー", "天気"],
       "expect": {
         "outcome": "NeedsClarification",

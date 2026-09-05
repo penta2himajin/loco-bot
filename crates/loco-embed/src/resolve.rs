@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn close_past_scores_clarify_via_s1_or_s2() {
-        // Scores ~0.70 each: below calibrated return_min (0.78) → gray → S2 clarify.
+        // Near-equal strong pasts: either S1 gray→S2 or ambiguous_past_return → Clarify.
         let mut q = vec![0.7f32, 0.7, 0.0, 0.0];
         crate::l2_normalize(&mut q);
         let mut p0 = vec![1.0f32, 0.05, 0.0, 0.0];

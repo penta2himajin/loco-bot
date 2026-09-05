@@ -79,15 +79,15 @@ mod tests {
     }
 
     #[test]
-    fn granite_needs_both_files() {
+    fn bekko_needs_both_files() {
         let dir = tempdir().unwrap();
         let layout = CacheLayout::new(dir.path());
-        let onnx = layout.model_file(ModelId::Granite97m, "onnx/model.onnx");
+        let onnx = layout.model_file(ModelId::BekkoA8m, "onnx/model.onnx");
         std::fs::create_dir_all(onnx.parent().unwrap()).unwrap();
         std::fs::write(&onnx, b"onnx").unwrap();
-        assert!(!model_fully_ready(&layout, ModelId::Granite97m));
-        let tok = layout.model_file(ModelId::Granite97m, "tokenizer.json");
+        assert!(!model_fully_ready(&layout, ModelId::BekkoA8m));
+        let tok = layout.model_file(ModelId::BekkoA8m, "tokenizer.json");
         std::fs::write(&tok, b"{}").unwrap();
-        assert!(model_fully_ready(&layout, ModelId::Granite97m));
+        assert!(model_fully_ready(&layout, ModelId::BekkoA8m));
     }
 }

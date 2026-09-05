@@ -7,28 +7,28 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum ModelId {
     Gemma4E4b,
-    /// ibm-granite/granite-embedding-97m-multilingual-r2 (S1).
-    Granite97m,
+    /// hotchpotch/bekko-embedding-v1-a8m (S1).
+    BekkoA8m,
 }
 
 impl ModelId {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Gemma4E4b => "gemma4-e4b",
-            Self::Granite97m => "granite-97m",
+            Self::BekkoA8m => "bekko-a8m",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "gemma4-e4b" | "gemma-4-e4b" | "e4b" => Some(Self::Gemma4E4b),
-            "granite-97m" | "granite97m" | "granite-embedding-97m" => Some(Self::Granite97m),
+            "bekko-a8m" | "bekkoa8m" | "bekko" => Some(Self::BekkoA8m),
             _ => None,
         }
     }
 
     pub fn all() -> &'static [ModelId] {
-        &[Self::Gemma4E4b, Self::Granite97m]
+        &[Self::Gemma4E4b, Self::BekkoA8m]
     }
 }
 
@@ -52,7 +52,7 @@ impl ModelSpec {
     pub fn for_id(id: ModelId) -> &'static ModelSpec {
         match id {
             ModelId::Gemma4E4b => &GEMMA4_E4B_IT,
-            ModelId::Granite97m => &GRANITE_97M,
+            ModelId::BekkoA8m => &BEKKO_A8M,
         }
     }
 
@@ -75,12 +75,12 @@ pub const GEMMA4_E4B_IT: ModelSpec = ModelSpec {
     display_name: "Gemma 4 E4B (LiteRT-LM)",
 };
 
-/// Granite embedding 97M multilingual R2 (ONNX + tokenizer) for S1.
-pub const GRANITE_97M: ModelSpec = ModelSpec {
-    id: ModelId::Granite97m,
-    hf_repo: "ibm-granite/granite-embedding-97m-multilingual-r2",
+/// Bekko embedding a8m (ONNX + tokenizer) for S1.
+pub const BEKKO_A8M: ModelSpec = ModelSpec {
+    id: ModelId::BekkoA8m,
+    hf_repo: "hotchpotch/bekko-embedding-v1-a8m",
     files: &["onnx/model.onnx", "tokenizer.json"],
-    display_name: "Granite Embedding 97M Multilingual R2",
+    display_name: "Bekko Embedding v1 a8m",
 };
 
 #[cfg(test)]
@@ -91,7 +91,8 @@ mod tests {
     fn parses_aliases() {
         assert_eq!(ModelId::parse("gemma4-e4b"), Some(ModelId::Gemma4E4b));
         assert_eq!(ModelId::parse("e4b"), Some(ModelId::Gemma4E4b));
-        assert_eq!(ModelId::parse("granite-97m"), Some(ModelId::Granite97m));
+        assert_eq!(ModelId::parse("bekko-a8m"), Some(ModelId::BekkoA8m));
+        assert_eq!(ModelId::parse("bekko"), Some(ModelId::BekkoA8m));
         assert_eq!(ModelId::parse("nope"), None);
     }
 
@@ -103,10 +104,11 @@ mod tests {
     }
 
     #[test]
-    fn granite_lists_onnx_and_tokenizer() {
-        let spec = ModelSpec::for_id(ModelId::Granite97m);
+    fn bekko_lists_onnx_and_tokenizer() {
+        let spec = ModelSpec::for_id(ModelId::BekkoA8m);
         assert_eq!(spec.files.len(), 2);
         assert!(spec.files[0].ends_with("model.onnx"));
         assert_eq!(spec.files[1], "tokenizer.json");
+        assert_eq!(spec.hf_repo, "hotchpotch/bekko-embedding-v1-a8m");
     }
 }

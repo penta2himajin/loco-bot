@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Granite embedding + S1 topic detection for loco-bot"
+description = "Bekko embedding + S1 topic detection for loco-bot"
 
 [features]
 default = []
-# ONNX Runtime + Hugging Face tokenizers for granite-97m.
+# ONNX Runtime + Hugging Face tokenizers for bekko-a8m.
 ort = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]

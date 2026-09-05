@@ -12,7 +12,7 @@ mod tools;
 mod chat;
 
 pub use backend::{BackendParseError, InferenceBackend};
-pub use catalog::{ModelId, ModelSpec, GEMMA4_E4B_IT, GRANITE_97M};
+pub use catalog::{ModelId, ModelSpec, BEKKO_A8M, GEMMA4_E4B_IT};
 pub use install::{install_model_file, InstallError};
 pub use paths::{default_cache_root, model_file_path, CacheLayout};
 pub use prompt::{user_message_json, with_session_notes};

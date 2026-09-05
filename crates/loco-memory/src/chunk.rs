@@ -8,7 +8,7 @@ pub struct TopicChunk {
     pub id: u64,
     /// Short text used for display / compiler (usually first user line).
     pub summary: String,
-    /// L2-normalized embedding (granite 384-d when using ort).
+    /// L2-normalized embedding (bekko-a8m 384-d when using ort).
     pub embedding: Vec<f32>,
     /// Inclusive start index into [`crate::SessionMemory::turns`].
     pub turn_start: usize,

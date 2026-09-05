@@ -1,9 +1,9 @@
-# S1 / deixis evaluation fixtures (granite ONNX)
+# S1 / deixis evaluation fixtures (bekko ONNX)
 
-Text→embed cases for real `granite-97m`. Requires:
+Text→embed cases for real `bekko-a8m`. Requires:
 
 - `loco-embed` feature `ort`
-- Cached weights (`loco download granite-97m` or `LOCO_GRANITE_DIR`)
+- Cached weights (`loco download bekko-a8m` or `LOCO_BEKKO_DIR`)
 
 ## Run
 
@@ -22,4 +22,5 @@ Skips when the model is not cached.
 | `resolve_text` | expand (optional) → embed → `resolve_topic` |
 | `embed_rank` | `cos(anchor,closer) > cos(anchor,farther)` (+ optional margin) |
 
-Texts were chosen against measured granite scores with default S1 thresholds.
+Texts and thresholds were calibrated against measured bekko-a8m scores
+(`S1Thresholds::bekko_calibrated`).

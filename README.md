@@ -1,6 +1,6 @@
 # loco-bot
 
-Small on-device agent for laptop/mobile: **LiteRT-LM + Gemma 4 E4B**, with chatstream-inspired session memory and granite-97m S1 topic detection.
+Small on-device agent for laptop/mobile: **LiteRT-LM + Gemma 4 E4B**, with chatstream-inspired session memory and bekko-a8m S1 topic detection.
 
 See `docs/research-reports/2026-09-05-local-agent-stack-consultation.md` for stack decisions.
 
@@ -38,17 +38,17 @@ Binary name: `loco`
 cargo run -p loco-cli -- doctor
 cargo run -p loco-cli -- models
 cargo run -p loco-cli -- download gemma4-e4b          # ~3.7GB, first-run download
-cargo run -p loco-cli -- download granite-97m         # ~415MB ONNX + tokenizer (S1)
+cargo run -p loco-cli -- download bekko-a8m           # ~165MB ONNX + tokenizer (S1)
 cargo run -p loco-cli -- chat --backend cpu "Hello"   # one-shot reply (+ memory / S1 / tools)
 cargo run -p loco-cli -- chat --backend gpu           # interactive REPL
 cargo run -p loco-cli -- memory show
 cargo run -p loco-cli -- memory clear
 cargo test -p loco-embed --test s1_eval              # S1/deixis logic fixtures
-cargo test -p loco-embed --features ort --test s1_eval_onnx  # real granite (skip if uncached)
+cargo test -p loco-embed --features ort --test s1_eval_onnx  # real bekko (skip if uncached)
 ```
 
 Session memory stores turns, a rolling summary, and S1 topic chunks under the cache
-(`…/memory/session.json`). Each chat turn runs S1/deixis resolve (when granite is cached), then a thin context
+(`…/memory/session.json`). Each chat turn runs S1/deixis resolve (when bekko is cached), then a thin context
 compiler injects resident notes and — on topic return — the returned chunk’s turns
 (`[context: resident(+dynamic)]`). Underspecified returns like「さっきの話」use the
 previous topic; ambiguous cases ask which topic. Use `--no-memory` or `--no-topic`
@@ -67,7 +67,7 @@ Build notes: LiteRT-LM bindings need `libclang` (`LIBCLANG_PATH` is set in `mise
 crates/loco-cli/     # CLI entrypoint
 crates/loco-engine/  # model catalog, cache, LiteRT-LM chat, tools
 crates/loco-memory/  # session memory (turns + topic chunks)
-crates/loco-embed/   # granite ONNX + S1 cascade
+crates/loco-embed/   # bekko-a8m ONNX + S1 cascade
 docs/research-reports/
 ```
 

@@ -1,7 +1,7 @@
 //! Declarative S1 / deixis evaluation harness.
 //!
 //! - Logic fixtures: `fixtures/s1/` (synthetic embeddings; CI-safe).
-//! - ONNX text fixtures: `fixtures/s1_onnx/` (needs `ort` + granite cache).
+//! - ONNX text fixtures: `fixtures/s1_onnx/` (needs `ort` + bekko-a8m cache).
 
 use std::fmt;
 use std::fs;
@@ -27,25 +27,25 @@ pub trait TextEmbedder {
 }
 
 #[cfg(feature = "ort")]
-impl TextEmbedder for crate::GraniteEmbedder {
+impl TextEmbedder for crate::BekkoEmbedder {
     fn embed_text(&mut self, text: &str) -> Result<Vec<f32>, String> {
         self.embed(text).map_err(|e| e.to_string())
     }
 }
 
-/// Resolve granite-97m model dir (`LOCO_GRANITE_DIR` or default cache layout).
-pub fn default_granite_dir() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("LOCO_GRANITE_DIR") {
+/// Resolve bekko-a8m model dir (`LOCO_BEKKO_DIR` or default cache layout).
+pub fn default_bekko_dir() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("LOCO_BEKKO_DIR") {
         return Some(PathBuf::from(p));
     }
     let cache = std::env::var_os("LOCO_CACHE_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::cache_dir().map(|c| c.join("loco-bot")))?;
-    Some(cache.join("models").join("granite-97m"))
+    Some(cache.join("models").join("bekko-a8m"))
 }
 
 /// True when `onnx/model.onnx` and `tokenizer.json` are present.
-pub fn granite_ready(dir: &Path) -> bool {
+pub fn embedder_ready(dir: &Path) -> bool {
     dir.join("onnx").join("model.onnx").is_file() && dir.join("tokenizer.json").is_file()
 }
 
@@ -390,7 +390,7 @@ pub fn run_suite(suite: &EvalSuite) -> SuiteReport {
     }
 }
 
-/// Run suite with a text embedder (granite ONNX, etc.).
+/// Run suite with a text embedder (bekko ONNX, etc.).
 pub fn run_suite_with_embedder(suite: &EvalSuite, embedder: &mut dyn TextEmbedder) -> SuiteReport {
     let mut results = Vec::with_capacity(suite.cases.len());
     let mut passed = 0usize;

@@ -1,4 +1,4 @@
-//! Real granite-97m ONNX fixtures under `fixtures/s1_onnx/`.
+//! Real bekko-a8m ONNX fixtures under `fixtures/s1_onnx/`.
 //!
 //! Skips cleanly when weights are missing (CI without download).
 
@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use loco_embed::{
-    default_granite_dir, granite_ready, load_suites_dir, run_suite_with_embedder, GraniteEmbedder,
+    default_bekko_dir, embedder_ready, load_suites_dir, run_suite_with_embedder, BekkoEmbedder,
 };
 
 fn fixtures_dir() -> PathBuf {
@@ -15,17 +15,17 @@ fn fixtures_dir() -> PathBuf {
 }
 
 #[test]
-fn granite_text_suites_pass_if_cached() {
-    let Some(dir) = default_granite_dir() else {
-        eprintln!("skip: no granite dir");
+fn bekko_text_suites_pass_if_cached() {
+    let Some(dir) = default_bekko_dir() else {
+        eprintln!("skip: no bekko dir");
         return;
     };
-    if !granite_ready(&dir) {
-        eprintln!("skip: granite not ready at {}", dir.display());
+    if !embedder_ready(&dir) {
+        eprintln!("skip: bekko not ready at {}", dir.display());
         return;
     }
 
-    let mut emb = GraniteEmbedder::open(&dir).expect("open granite");
+    let mut emb = BekkoEmbedder::open(&dir).expect("open bekko");
     let suites = load_suites_dir(fixtures_dir()).expect("load fixtures/s1_onnx");
     assert!(!suites.is_empty());
 

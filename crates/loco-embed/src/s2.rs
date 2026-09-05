@@ -25,10 +25,10 @@ pub enum S2Decision {
 
 /// Safety-net S2 used by default in the CLI.
 ///
-/// Measured against granite-97m (2026-09-06):
-/// - Hard-negative multipast New scores ≈0.71–0.73 → must stay **New**
-/// - Near-floor ambiguous pairs ≈0.74–0.78 → **Clarify**
-/// - Never soft-Return below `S1Thresholds::return_min` (0.78)
+/// Measured against bekko-a8m (2026-09-06):
+/// - Hard-negative multipast New scores ≈0.04–0.16 → must stay **New**
+/// - Near-floor ambiguous pairs (rare) just under return_min → **Clarify**
+/// - Never soft-Return below `S1Thresholds::return_min` (0.26)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GraySafetyS2 {
     /// Both top past scores must be ≥ this (just under return_min) to clarify.
@@ -40,8 +40,8 @@ pub struct GraySafetyS2 {
 impl Default for GraySafetyS2 {
     fn default() -> Self {
         Self {
-            // Below return_min (0.78), above typical hard-negative pairs (~0.71–0.73).
-            clarify_min: 0.735,
+            // Below return_min (0.26), above typical hard-negative pairs (~0.16).
+            clarify_min: 0.23,
             ambiguity_delta: 0.05,
         }
     }
@@ -82,23 +82,23 @@ mod tests {
     fn gray_safety_prefers_new_on_single_mid_past() {
         let mut s2 = GraySafetyS2::default();
         let ev = GrayEvidence {
-            current_sim: 0.69,
+            current_sim: 0.18,
             best_past_index: Some(1),
-            best_past_sim: 0.73,
-            past_ranked: vec![(1, 0.73)],
+            best_past_sim: 0.21,
+            past_ranked: vec![(1, 0.21)],
         };
         assert_eq!(s2.decide_gray(&ev), S2Decision::New);
     }
 
     #[test]
     fn gray_safety_new_when_dual_past_below_clarify_floor() {
-        // Multipast New (quantum vs curry+weather): ~0.73 / ~0.72.
+        // Multipast New: hard negatives stay under clarify_min.
         let mut s2 = GraySafetyS2::default();
         let ev = GrayEvidence {
-            current_sim: 0.69,
+            current_sim: 0.10,
             best_past_index: Some(0),
-            best_past_sim: 0.733,
-            past_ranked: vec![(0, 0.733), (1, 0.723)],
+            best_past_sim: 0.16,
+            past_ranked: vec![(0, 0.16), (1, 0.15)],
         };
         assert_eq!(s2.decide_gray(&ev), S2Decision::New);
     }
@@ -107,10 +107,10 @@ mod tests {
     fn gray_safety_clarifies_close_near_return_floor() {
         let mut s2 = GraySafetyS2::default();
         let ev = GrayEvidence {
-            current_sim: 0.74,
+            current_sim: 0.20,
             best_past_index: Some(0),
-            best_past_sim: 0.746,
-            past_ranked: vec![(0, 0.746), (1, 0.738)],
+            best_past_sim: 0.245,
+            past_ranked: vec![(0, 0.245), (1, 0.238)],
         };
         assert_eq!(s2.decide_gray(&ev), S2Decision::ClarifyPast);
     }

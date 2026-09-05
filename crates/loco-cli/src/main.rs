@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
 use loco_engine::{
     default_tools_json, install_model_file, model_fully_ready, model_status, with_session_notes,
-    CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, ToolHost, GEMMA4_E4B_IT,
-    GRANITE_97M,
+    CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, ToolHost, BEKKO_A8M,
+    GEMMA4_E4B_IT,
 };
 use loco_memory::{
     compile, CompilerConfig, PendingCandidate, PendingClarification, SessionMemory, TopicSwitch,
@@ -21,8 +21,8 @@ use loco_engine::ChatSession;
 
 #[cfg(feature = "embed")]
 use loco_embed::{
-    expand_query, match_clarification, resolve_topic, ChunkScore, Clarification, ClarifyAction,
-    ClarifyCandidate, GraniteEmbedder, GraySafetyS2, ResolveInput, ResolveOutcome, S1Thresholds,
+    expand_query, match_clarification, resolve_topic, BekkoEmbedder, ChunkScore, Clarification,
+    ClarifyAction, ClarifyCandidate, GraySafetyS2, ResolveInput, ResolveOutcome, S1Thresholds,
     TopicS2, DEFAULT_AMBIGUITY_DELTA,
 };
 
@@ -46,7 +46,7 @@ enum Commands {
     Doctor,
     /// Download a model into the local cache (first-run style).
     Download {
-        /// Model id: gemma4-e4b | granite-97m
+        /// Model id: gemma4-e4b | bekko-a8m
         #[arg(default_value = "gemma4-e4b")]
         model: String,
         /// Re-download even if files already exist.
@@ -71,7 +71,7 @@ enum Commands {
         /// Do not load/save session memory.
         #[arg(long)]
         no_memory: bool,
-        /// Skip S1 topic detection even if granite is cached.
+        /// Skip S1 topic detection even if bekko is cached.
         #[arg(long)]
         no_topic: bool,
         /// Disable built-in tools (clock, notes, session_stats).
@@ -139,7 +139,7 @@ fn cmd_doctor(layout: &CacheLayout) -> Result<()> {
     #[cfg(not(feature = "inference"))]
     println!("  inference:  disabled (build with --features inference)");
     #[cfg(feature = "embed")]
-    println!("  embed:      enabled (ONNX granite)");
+    println!("  embed:      enabled (ONNX bekko-a8m)");
     #[cfg(not(feature = "embed"))]
     println!("  embed:      disabled (build with --features embed)");
     let mem = SessionMemory::load(layout.memory_path()).unwrap_or_default();
@@ -152,16 +152,16 @@ fn cmd_doctor(layout: &CacheLayout) -> Result<()> {
     println!();
 
     print_model_line(layout, &GEMMA4_E4B_IT);
-    print_model_line(layout, &GRANITE_97M);
+    print_model_line(layout, &BEKKO_A8M);
 
     if !model_fully_ready(layout, ModelId::Gemma4E4b) {
         println!();
         println!("Next: loco download gemma4-e4b");
         bail!("primary chat model is not ready");
     }
-    if !model_fully_ready(layout, ModelId::Granite97m) {
+    if !model_fully_ready(layout, ModelId::BekkoA8m) {
         println!();
-        println!("Tip: loco download granite-97m  # enables S1 topic detection");
+        println!("Tip: loco download bekko-a8m  # enables S1 topic detection");
     }
     Ok(())
 }
@@ -490,7 +490,7 @@ fn chat_reply(
     session: &mut ChatSession,
     no_memory: bool,
     tools: Option<&ToolHost>,
-    #[cfg(feature = "embed")] embedder: &mut Option<GraniteEmbedder>,
+    #[cfg(feature = "embed")] embedder: &mut Option<BekkoEmbedder>,
 ) -> Result<String> {
     let switch = if no_memory {
         TopicSwitch::Continue
@@ -559,21 +559,21 @@ enum ResolveApply {
 }
 
 #[cfg(all(feature = "inference", feature = "embed"))]
-fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<GraniteEmbedder> {
+fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<BekkoEmbedder> {
     if disabled {
         return None;
     }
-    if !model_fully_ready(layout, ModelId::Granite97m) {
-        eprintln!("topic: granite-97m not cached (loco download granite-97m)");
+    if !model_fully_ready(layout, ModelId::BekkoA8m) {
+        eprintln!("topic: bekko-a8m not cached (loco download bekko-a8m)");
         return None;
     }
-    match GraniteEmbedder::open(layout.model_dir(ModelId::Granite97m)) {
+    match BekkoEmbedder::open(layout.model_dir(ModelId::BekkoA8m)) {
         Ok(e) => {
-            eprintln!("topic: S1 enabled (granite-97m)");
+            eprintln!("topic: S1 enabled (bekko-a8m)");
             Some(e)
         }
         Err(err) => {
-            eprintln!("topic: failed to load granite ({err}); continuing without S1");
+            eprintln!("topic: failed to load bekko ({err}); continuing without S1");
             None
         }
     }
@@ -581,7 +581,7 @@ fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<GraniteEmbedder
 
 #[cfg(feature = "embed")]
 fn apply_resolve(
-    embedder: &mut GraniteEmbedder,
+    embedder: &mut BekkoEmbedder,
     memory: &mut SessionMemory,
     user: &str,
 ) -> Result<ResolveApply> {
