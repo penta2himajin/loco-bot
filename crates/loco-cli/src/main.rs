@@ -138,13 +138,15 @@ fn run() -> Result<()> {
             prompt,
         } => cmd_chat(
             &layout,
-            &model,
-            &backend,
-            no_memory,
-            no_topic,
-            no_tools,
-            fs_root,
-            allow_fs,
+            SessionLaunch {
+                model,
+                backend,
+                no_memory,
+                no_topic,
+                no_tools,
+                fs_root,
+                allow_fs,
+            },
             prompt.as_deref(),
         ),
         Commands::Serve {
@@ -155,7 +157,16 @@ fn run() -> Result<()> {
             fs_root,
             allow_fs,
         } => cmd_serve(
-            &layout, &backend, no_memory, no_topic, no_tools, fs_root, allow_fs,
+            &layout,
+            SessionLaunch {
+                model: "gemma4-e4b".into(),
+                backend,
+                no_memory,
+                no_topic,
+                no_tools,
+                fs_root,
+                allow_fs,
+            },
         ),
     }
 }
@@ -341,21 +352,20 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "inference")]
-fn cmd_chat(
-    layout: &CacheLayout,
-    model: &str,
-    backend: &str,
+struct SessionLaunch {
+    model: String,
+    backend: String,
     no_memory: bool,
     no_topic: bool,
     no_tools: bool,
     fs_root: Option<PathBuf>,
     allow_fs: bool,
-    prompt: Option<&str>,
-) -> Result<()> {
-    let mut agent = open_agent(
-        layout, model, backend, no_memory, no_topic, no_tools, fs_root, allow_fs,
-    )?;
+}
+
+#[cfg(feature = "inference")]
+fn cmd_chat(layout: &CacheLayout, launch: SessionLaunch, prompt: Option<&str>) -> Result<()> {
+    let no_memory = launch.no_memory;
+    let mut agent = open_agent(layout, launch)?;
     eprintln!("ready.\n");
 
     if let Some(one_shot) = prompt {
@@ -415,41 +425,15 @@ fn cmd_chat(
 }
 
 #[cfg(not(feature = "inference"))]
-fn cmd_chat(
-    _layout: &CacheLayout,
-    _model: &str,
-    _backend: &str,
-    _no_memory: bool,
-    _no_topic: bool,
-    _no_tools: bool,
-    _fs_root: Option<PathBuf>,
-    _allow_fs: bool,
-    _prompt: Option<&str>,
-) -> Result<()> {
+fn cmd_chat(_layout: &CacheLayout, _launch: SessionLaunch, _prompt: Option<&str>) -> Result<()> {
     bail!("chat requires the `inference` feature (LiteRT-LM)")
 }
 
 /// One JSON object per stdin line → one JSON `TurnOutcome` per stdout line.
 #[cfg(feature = "inference")]
-fn cmd_serve(
-    layout: &CacheLayout,
-    backend: &str,
-    no_memory: bool,
-    no_topic: bool,
-    no_tools: bool,
-    fs_root: Option<PathBuf>,
-    allow_fs: bool,
-) -> Result<()> {
-    let mut agent = open_agent(
-        layout,
-        "gemma4-e4b",
-        backend,
-        no_memory,
-        no_topic,
-        no_tools,
-        fs_root,
-        allow_fs,
-    )?;
+fn cmd_serve(layout: &CacheLayout, launch: SessionLaunch) -> Result<()> {
+    let no_memory = launch.no_memory;
+    let mut agent = open_agent(layout, launch)?;
     eprintln!("serve: JSONL Agent API on stdin/stdout (one request object per line)");
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -480,34 +464,26 @@ fn cmd_serve(
 }
 
 #[cfg(not(feature = "inference"))]
-fn cmd_serve(
-    _layout: &CacheLayout,
-    _backend: &str,
-    _no_memory: bool,
-    _no_topic: bool,
-    _no_tools: bool,
-    _fs_root: Option<PathBuf>,
-    _allow_fs: bool,
-) -> Result<()> {
+fn cmd_serve(_layout: &CacheLayout, _launch: SessionLaunch) -> Result<()> {
     bail!("serve requires the `inference` feature (LiteRT-LM)")
 }
 
 #[cfg(feature = "inference")]
-fn open_agent(
-    layout: &CacheLayout,
-    model: &str,
-    backend: &str,
-    no_memory: bool,
-    no_topic: bool,
-    no_tools: bool,
-    fs_root: Option<PathBuf>,
-    allow_fs: bool,
-) -> Result<AgentSession> {
-    let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
+fn open_agent(layout: &CacheLayout, launch: SessionLaunch) -> Result<AgentSession> {
+    let SessionLaunch {
+        model,
+        backend,
+        no_memory,
+        no_topic,
+        no_tools,
+        fs_root,
+        allow_fs,
+    } = launch;
+    let id = ModelId::parse(&model).with_context(|| format!("unknown model id: {model}"))?;
     if id != ModelId::Gemma4E4b {
         bail!("chat currently supports only gemma4-e4b (got {id})");
     }
-    let backend = InferenceBackend::parse(backend)?;
+    let backend = InferenceBackend::parse(&backend)?;
     match model_status(layout, id) {
         ModelStatus::Present { bytes, .. } if bytes > 0 => {}
         ModelStatus::Missing { expected } => {
@@ -571,9 +547,9 @@ fn open_agent(
         },
     };
     let agent = AgentSession::open(layout, backend, memory, config)?;
-    if no_topic || no_memory {
-        // already messaged
-    } else if !agent.topic_active() && model_fully_ready(layout, ModelId::BekkoA8m) {
+    if !(no_topic || no_memory || agent.topic_active())
+        && model_fully_ready(layout, ModelId::BekkoA8m)
+    {
         eprintln!("topic: failed to load bekko; continuing without S1");
     }
     Ok(agent)
