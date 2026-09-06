@@ -1,0 +1,24 @@
+[package]
+name = "loco-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Surface-agnostic agent turn API (resolve, chat, tools, consent)"
+
+[features]
+default = ["inference", "embed"]
+inference = ["loco-engine/inference"]
+embed = ["loco-embed/ort", "dep:loco-embed"]
+
+[dependencies]
+anyhow = { workspace = true }
+loco-engine = { workspace = true }
+loco-memory = { workspace = true }
+loco-embed = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

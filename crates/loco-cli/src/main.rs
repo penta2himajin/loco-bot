@@ -7,24 +7,12 @@ use std::process::ExitCode;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
+use loco_agent::{AgentEvent, AgentSession, AgentSessionConfig};
 use loco_engine::{
-    default_tools_json, install_model_file, model_fully_ready, model_status, with_session_notes,
-    CacheLayout, InferenceBackend, ModelId, ModelSpec, ModelStatus, ToolHost, BEKKO_A8M,
-    GEMMA4_E4B_IT,
+    install_model_file, model_fully_ready, model_status, CacheLayout, InferenceBackend, ModelId,
+    ModelSpec, ModelStatus, BEKKO_A8M, GEMMA4_E4B_IT,
 };
-use loco_memory::{
-    compile, CompilerConfig, PendingCandidate, PendingClarification, SessionMemory, TopicSwitch,
-};
-
-#[cfg(feature = "inference")]
-use loco_engine::ChatSession;
-
-#[cfg(feature = "embed")]
-use loco_embed::{
-    expand_query, match_clarification, resolve_topic, BekkoEmbedder, ChunkScore, Clarification,
-    ClarifyAction, ClarifyCandidate, GraySafetyS2, ResolveInput, ResolveOutcome, S1Thresholds,
-    TopicS2, DEFAULT_AMBIGUITY_DELTA,
-};
+use loco_memory::SessionMemory;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -60,7 +48,7 @@ enum Commands {
         #[command(subcommand)]
         action: MemoryCmd,
     },
-    /// Chat with the local Gemma 4 E4B model (streaming).
+    /// Chat with the local Gemma 4 E4B model (via Agent API).
     Chat {
         /// Model id (default: gemma4-e4b).
         #[arg(long, default_value = "gemma4-e4b")]
@@ -79,6 +67,21 @@ enum Commands {
         no_tools: bool,
         /// Optional one-shot prompt. If omitted, starts an interactive REPL.
         prompt: Option<String>,
+    },
+    /// JSONL Agent API over stdio (laptop / thin UI shells).
+    Serve {
+        /// Inference backend: cpu or gpu (metal maps to gpu).
+        #[arg(long, default_value = "cpu")]
+        backend: String,
+        /// Do not load/save session memory.
+        #[arg(long)]
+        no_memory: bool,
+        /// Skip S1 topic detection even if bekko is cached.
+        #[arg(long)]
+        no_topic: bool,
+        /// Disable built-in tools.
+        #[arg(long)]
+        no_tools: bool,
     },
 }
 
@@ -128,6 +131,12 @@ fn run() -> Result<()> {
             no_tools,
             prompt.as_deref(),
         ),
+        Commands::Serve {
+            backend,
+            no_memory,
+            no_topic,
+            no_tools,
+        } => cmd_serve(&layout, &backend, no_memory, no_topic, no_tools),
     }
 }
 
@@ -312,6 +321,7 @@ fn cmd_download(layout: &CacheLayout, model: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "inference")]
 fn cmd_chat(
     layout: &CacheLayout,
     model: &str,
@@ -321,112 +331,16 @@ fn cmd_chat(
     no_tools: bool,
     prompt: Option<&str>,
 ) -> Result<()> {
-    #[cfg(not(feature = "inference"))]
-    {
-        let _ = (
-            layout, model, backend, no_memory, no_topic, no_tools, prompt,
-        );
-        bail!("chat requires the `inference` feature (default for loco-cli)");
-    }
-
-    #[cfg(feature = "inference")]
-    chat_with_inference(
-        layout, model, backend, no_memory, no_topic, no_tools, prompt,
-    )
-}
-
-#[cfg(feature = "inference")]
-fn chat_with_inference(
-    layout: &CacheLayout,
-    model: &str,
-    backend: &str,
-    no_memory: bool,
-    no_topic: bool,
-    no_tools: bool,
-    prompt: Option<&str>,
-) -> Result<()> {
-    let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
-    if id != ModelId::Gemma4E4b {
-        bail!("chat currently supports only gemma4-e4b (got {id})");
-    }
-    let backend = InferenceBackend::parse(backend)?;
-    let path = match model_status(layout, id) {
-        ModelStatus::Present { path, bytes } if bytes > 0 => path,
-        ModelStatus::Missing { expected } => {
-            bail!(
-                "model not ready at {}. Run: loco download {}",
-                expected.display(),
-                id
-            );
-        }
-        ModelStatus::Present { path, .. } => {
-            bail!("model file is empty: {}", path.display());
-        }
-    };
-
-    let memory_path = layout.memory_path();
-    let mut memory = if no_memory {
-        SessionMemory::default()
-    } else {
-        SessionMemory::load(&memory_path).context("load session memory")?
-    };
-
-    #[cfg(feature = "embed")]
-    let mut embedder = load_embedder(layout, no_topic || no_memory);
-    #[cfg(not(feature = "embed"))]
-    let _ = no_topic;
-
-    let notes = if no_memory {
-        None
-    } else {
-        // Cold-start system message; per-turn notes come from the compiler.
-        memory.system_preamble()
-    };
-
-    eprintln!(
-        "loading {} ({backend}) from {} …",
-        ModelSpec::for_id(id).display_name,
-        path.display()
-    );
-    if let Some(ref p) = notes {
-        eprintln!("memory: system preamble {} chars", p.len());
-    } else if !no_memory {
-        eprintln!("memory: empty ({})", memory_path.display());
-    }
-
-    let tools_json = if no_tools {
-        None
-    } else {
-        Some(default_tools_json())
-    };
-    let tool_host = if no_tools {
-        None
-    } else {
-        eprintln!(
-            "tools: get_current_time, note_write, note_read, session_stats ({})",
-            layout.notes_path().display()
-        );
-        Some(ToolHost::new(layout.notes_path(), memory_path.clone()))
-    };
-
-    let mut session = ChatSession::open(&path, backend, notes.as_deref(), tools_json.as_deref())
-        .context("open chat session")?;
+    let mut agent = open_agent(layout, model, backend, no_memory, no_topic, no_tools)?;
     eprintln!("ready.\n");
 
     if let Some(one_shot) = prompt {
-        let reply = chat_reply(
-            one_shot,
-            &mut memory,
-            &mut session,
-            no_memory,
-            tool_host.as_ref(),
-            #[cfg(feature = "embed")]
-            &mut embedder,
-        )?;
-        println!("{reply}");
+        let outcome = agent.turn(one_shot).context("agent turn")?;
+        log_events(&outcome.events);
+        println!("{}", outcome.reply_text);
         if !no_memory {
-            memory.append(one_shot, &reply);
-            memory.save(&memory_path).context("save session memory")?;
+            agent.memory.append(one_shot, &outcome.reply_text);
+            agent.save_memory()?;
         }
         return Ok(());
     }
@@ -449,29 +363,22 @@ fn chat_with_inference(
             break;
         }
         if text == "/memory" {
-            println!("turns: {}", memory.turns.len());
-            println!("chunks: {}", memory.chunks.len());
-            if memory.summary.is_empty() {
+            println!("turns: {}", agent.memory.turns.len());
+            println!("chunks: {}", agent.memory.chunks.len());
+            if agent.memory.summary.is_empty() {
                 println!("summary: (empty)");
             } else {
-                println!("{}", memory.summary);
+                println!("{}", agent.memory.summary);
             }
             continue;
         }
-        match chat_reply(
-            text,
-            &mut memory,
-            &mut session,
-            no_memory,
-            tool_host.as_ref(),
-            #[cfg(feature = "embed")]
-            &mut embedder,
-        ) {
-            Ok(reply) => {
-                println!("{reply}");
+        match agent.turn(text) {
+            Ok(outcome) => {
+                log_events(&outcome.events);
+                println!("{}", outcome.reply_text);
                 if !no_memory {
-                    memory.append(text, &reply);
-                    if let Err(err) = memory.save(&memory_path) {
+                    agent.memory.append(text, &outcome.reply_text);
+                    if let Err(err) = agent.save_memory() {
                         eprintln!("[memory] save failed: {err}");
                     }
                 }
@@ -483,241 +390,163 @@ fn chat_with_inference(
     Ok(())
 }
 
+#[cfg(not(feature = "inference"))]
+fn cmd_chat(
+    _layout: &CacheLayout,
+    _model: &str,
+    _backend: &str,
+    _no_memory: bool,
+    _no_topic: bool,
+    _no_tools: bool,
+    _prompt: Option<&str>,
+) -> Result<()> {
+    bail!("chat requires the `inference` feature (LiteRT-LM)")
+}
+
+/// One JSON object per stdin line → one JSON `TurnOutcome` per stdout line.
 #[cfg(feature = "inference")]
-fn chat_reply(
-    text: &str,
-    memory: &mut SessionMemory,
-    session: &mut ChatSession,
+fn cmd_serve(
+    layout: &CacheLayout,
+    backend: &str,
     no_memory: bool,
-    tools: Option<&ToolHost>,
-    #[cfg(feature = "embed")] embedder: &mut Option<BekkoEmbedder>,
-) -> Result<String> {
-    let switch = if no_memory {
-        TopicSwitch::Continue
-    } else {
-        #[cfg(feature = "embed")]
-        {
-            if let Some(emb) = embedder.as_mut() {
-                match apply_resolve(emb, memory, text)? {
-                    ResolveApply::Clarify(question) => {
-                        // Persist the clarifying turn; skip E4B.
-                        return Ok(question);
-                    }
-                    ResolveApply::Ack(msg) => {
-                        return Ok(msg);
-                    }
-                    ResolveApply::Switch(sw) => sw,
-                }
-            } else {
-                TopicSwitch::Continue
-            }
+    no_topic: bool,
+    no_tools: bool,
+) -> Result<()> {
+    let mut agent = open_agent(layout, "gemma4-e4b", backend, no_memory, no_topic, no_tools)?;
+    eprintln!("serve: JSONL Agent API on stdin/stdout (one request object per line)");
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
         }
-        #[cfg(not(feature = "embed"))]
-        {
-            TopicSwitch::Continue
+        let req: serde_json::Value =
+            serde_json::from_str(line).context("parse serve request JSON")?;
+        let user = req
+            .get("user")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if user.is_empty() {
+            continue;
         }
-    };
-
-    let cfg = match switch {
-        TopicSwitch::Return { .. } => CompilerConfig::default(),
-        TopicSwitch::Continue | TopicSwitch::New => CompilerConfig {
-            recent_turn_window: 0,
-            ..CompilerConfig::default()
-        },
-    };
-    let compiled = if no_memory {
-        None
-    } else {
-        let ctx = compile(memory, switch, &cfg);
-        let notes = ctx.render_notes(&cfg);
-        if let Some(ref n) = notes {
-            let dyn_tag = if ctx.dynamic.is_some() {
-                "+dynamic"
-            } else {
-                ""
-            };
-            eprintln!("[context: resident{dyn_tag} {} chars]", n.len());
+        let outcome = agent.turn(user).context("agent turn")?;
+        if !no_memory {
+            agent.memory.append(user, &outcome.reply_text);
+            agent.save_memory()?;
         }
-        notes
-    };
-
-    let payload = with_session_notes(compiled.as_deref(), text);
-    if let Some(host) = tools {
-        session
-            .reply_with_tools(&payload, host)
-            .context("generate reply (tools)")
-    } else {
-        session.reply(&payload).context("generate reply")
+        println!("{}", serde_json::to_string(&outcome)?);
+        io::stdout().flush().ok();
     }
+    Ok(())
 }
 
-#[cfg(feature = "embed")]
-enum ResolveApply {
-    Switch(TopicSwitch),
-    Clarify(String),
-    Ack(String),
+#[cfg(not(feature = "inference"))]
+fn cmd_serve(
+    _layout: &CacheLayout,
+    _backend: &str,
+    _no_memory: bool,
+    _no_topic: bool,
+    _no_tools: bool,
+) -> Result<()> {
+    bail!("serve requires the `inference` feature (LiteRT-LM)")
 }
 
-#[cfg(all(feature = "inference", feature = "embed"))]
-fn load_embedder(layout: &CacheLayout, disabled: bool) -> Option<BekkoEmbedder> {
-    if disabled {
-        return None;
+#[cfg(feature = "inference")]
+fn open_agent(
+    layout: &CacheLayout,
+    model: &str,
+    backend: &str,
+    no_memory: bool,
+    no_topic: bool,
+    no_tools: bool,
+) -> Result<AgentSession> {
+    let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
+    if id != ModelId::Gemma4E4b {
+        bail!("chat currently supports only gemma4-e4b (got {id})");
     }
-    if !model_fully_ready(layout, ModelId::BekkoA8m) {
-        eprintln!("topic: bekko-a8m not cached (loco download bekko-a8m)");
-        return None;
+    let backend = InferenceBackend::parse(backend)?;
+    match model_status(layout, id) {
+        ModelStatus::Present { bytes, .. } if bytes > 0 => {}
+        ModelStatus::Missing { expected } => {
+            bail!(
+                "model not ready at {}. Run: loco download {}",
+                expected.display(),
+                id
+            );
+        }
+        ModelStatus::Present { path, .. } => {
+            bail!("model file is empty: {}", path.display());
+        }
     }
-    match BekkoEmbedder::open(layout.model_dir(ModelId::BekkoA8m)) {
-        Ok(e) => {
+
+    let memory = if no_memory {
+        SessionMemory::default()
+    } else {
+        SessionMemory::load(layout.memory_path()).context("load session memory")?
+    };
+
+    eprintln!(
+        "loading {} ({backend}) …",
+        ModelSpec::for_id(id).display_name
+    );
+    if !no_memory {
+        if let Some(p) = memory.system_preamble() {
+            eprintln!("memory: system preamble {} chars", p.len());
+        } else {
+            eprintln!("memory: empty ({})", layout.memory_path().display());
+        }
+    }
+    if !no_tools {
+        eprintln!(
+            "tools: get_current_time, note_write, note_read, session_stats ({})",
+            layout.notes_path().display()
+        );
+    }
+    if !no_topic && !no_memory {
+        if model_fully_ready(layout, ModelId::BekkoA8m) {
             eprintln!("topic: S1 enabled (bekko-a8m)");
-            Some(e)
-        }
-        Err(err) => {
-            eprintln!("topic: failed to load bekko ({err}); continuing without S1");
-            None
+        } else {
+            eprintln!("topic: bekko-a8m not cached (loco download bekko-a8m)");
         }
     }
-}
 
-#[cfg(feature = "embed")]
-fn apply_resolve(
-    embedder: &mut BekkoEmbedder,
-    memory: &mut SessionMemory,
-    user: &str,
-) -> Result<ResolveApply> {
-    // Complete a pending clarification first.
-    if let Some(pending) = memory.pending_clarify.clone() {
-        let clarification = pending_to_clarification(&pending);
-        if let Some(action) = match_clarification(user, &clarification) {
-            let label = clarification
-                .candidates
-                .iter()
-                .find(|c| c.action == action)
-                .map(|c| c.label.as_str())
-                .unwrap_or("selected");
-            let switch = apply_clarify_action(memory, action);
-            memory.clear_pending_clarify();
-            eprintln!("[topic: clarify → {switch:?}]");
-            if is_bare_clarify_reply(user, &pending) {
-                return Ok(ResolveApply::Ack(format!(
-                    "了解です。「{label}」に戻ります。続けてどうぞ。"
-                )));
-            }
-            return Ok(ResolveApply::Switch(switch));
-        }
-        eprintln!("[topic: clarify (re-ask)]");
-        return Ok(ResolveApply::Clarify(pending.question));
-    }
-
-    let expanded = expand_query(user, memory.last_user());
-    let query = embedder
-        .embed(&expanded)
-        .context("embed user text for S1")?;
-    let past_owned: Vec<(usize, Vec<f32>)> = memory
-        .past_chunk_embeddings()
-        .into_iter()
-        .map(|(i, e)| (i, e.to_vec()))
-        .collect();
-    let past: Vec<ChunkScore<'_>> = past_owned
-        .iter()
-        .map(|(i, e)| ChunkScore {
-            index: *i,
-            embedding: e.as_slice(),
-        })
-        .collect();
-    let current = memory.current_embedding().map(|e| e.to_vec());
-    let labels = memory.chunk_labels();
-    let mut s2 = GraySafetyS2::default();
-    let mut inp = ResolveInput {
-        user,
-        query_emb: &query,
-        current: current.as_deref(),
-        past: &past,
-        previous_chunk: memory.previous_chunk,
-        chunk_labels: &labels,
-        thresholds: S1Thresholds::default(),
-        ambiguity_delta: DEFAULT_AMBIGUITY_DELTA,
-        s2: Some(&mut s2 as &mut dyn TopicS2),
+    let config = AgentSessionConfig {
+        no_memory,
+        no_tools,
+        no_topic,
     };
-    let outcome = resolve_topic(&mut inp);
-
-    Ok(match outcome {
-        ResolveOutcome::Continue => {
-            eprintln!("[topic: continue]");
-            ResolveApply::Switch(TopicSwitch::Continue)
-        }
-        ResolveOutcome::New => {
-            let preview: String = user.chars().take(80).collect();
-            let idx = memory.open_chunk(preview, query);
-            eprintln!("[topic: new #{idx}]");
-            ResolveApply::Switch(TopicSwitch::New)
-        }
-        ResolveOutcome::Return { chunk_index } => {
-            memory.return_to_chunk(chunk_index);
-            eprintln!("[topic: return #{chunk_index}]");
-            ResolveApply::Switch(TopicSwitch::Return { chunk_index })
-        }
-        ResolveOutcome::NeedsClarification(c) => {
-            eprintln!("[topic: clarify]");
-            memory.set_pending_clarify(clarification_to_pending(&c));
-            ResolveApply::Clarify(c.question)
-        }
-    })
-}
-
-#[cfg(feature = "embed")]
-fn apply_clarify_action(memory: &mut SessionMemory, action: ClarifyAction) -> TopicSwitch {
-    match action {
-        ClarifyAction::ContinueCurrent => TopicSwitch::Continue,
-        ClarifyAction::ReturnTo { chunk_index } => {
-            memory.return_to_chunk(chunk_index);
-            TopicSwitch::Return { chunk_index }
-        }
+    let agent = AgentSession::open(layout, backend, memory, config)?;
+    if no_topic || no_memory {
+        // already messaged
+    } else if !agent.topic_active() && model_fully_ready(layout, ModelId::BekkoA8m) {
+        eprintln!("topic: failed to load bekko; continuing without S1");
     }
+    Ok(agent)
 }
 
-#[cfg(feature = "embed")]
-fn is_bare_clarify_reply(user: &str, pending: &PendingClarification) -> bool {
-    let t = user.trim();
-    t.parse::<usize>().is_ok()
-        || pending
-            .candidates
-            .iter()
-            .any(|c| c.label.eq_ignore_ascii_case(t))
-}
-
-#[cfg(feature = "embed")]
-fn clarification_to_pending(c: &Clarification) -> PendingClarification {
-    PendingClarification {
-        question: c.question.clone(),
-        candidates: c
-            .candidates
-            .iter()
-            .map(|x| PendingCandidate {
-                label: x.label.clone(),
-                return_chunk: match x.action {
-                    ClarifyAction::ContinueCurrent => None,
-                    ClarifyAction::ReturnTo { chunk_index } => Some(chunk_index),
-                },
-            })
-            .collect(),
-    }
-}
-
-#[cfg(feature = "embed")]
-fn pending_to_clarification(p: &PendingClarification) -> Clarification {
-    Clarification {
-        question: p.question.clone(),
-        candidates: p
-            .candidates
-            .iter()
-            .map(|x| ClarifyCandidate {
-                label: x.label.clone(),
-                action: match x.return_chunk {
-                    None => ClarifyAction::ContinueCurrent,
-                    Some(chunk_index) => ClarifyAction::ReturnTo { chunk_index },
-                },
-            })
-            .collect(),
+fn log_events(events: &[AgentEvent]) {
+    for ev in events {
+        match ev {
+            AgentEvent::Topic { kind, chunk_index } => match chunk_index {
+                Some(i) => eprintln!("[topic: {kind} #{i}]"),
+                None => eprintln!("[topic: {kind}]"),
+            },
+            AgentEvent::Context { chars, has_dynamic } => {
+                let dyn_tag = if *has_dynamic { "+dynamic" } else { "" };
+                eprintln!("[context: resident{dyn_tag} {chars} chars]");
+            }
+            AgentEvent::ToolRequest { name, risk, .. } => {
+                eprintln!("[tool request: {name} risk={risk}]");
+            }
+            AgentEvent::ToolResult { name, ok } => {
+                eprintln!("[tool result: {name} ok={ok}]");
+            }
+            AgentEvent::Clarify { .. }
+            | AgentEvent::Ack { .. }
+            | AgentEvent::Token { .. }
+            | AgentEvent::Done { .. } => {}
+        }
     }
 }

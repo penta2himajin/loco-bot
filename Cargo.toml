@@ -5,6 +5,7 @@ members = [
     "crates/loco-cli",
     "crates/loco-memory",
     "crates/loco-embed",
+    "crates/loco-agent",
 ]
 exclude = [".tmp"]
 
@@ -18,6 +19,7 @@ rust-version = "1.85"
 loco-engine = { path = "crates/loco-engine" }
 loco-memory = { path = "crates/loco-memory" }
 loco-embed = { path = "crates/loco-embed" }
+loco-agent = { path = "crates/loco-agent" }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"
