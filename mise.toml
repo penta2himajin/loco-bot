@@ -28,3 +28,19 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 """
+
+[tasks.eval-s1]
+description = "Run S1/deixis declarative eval fixtures (logic)"
+run = "cargo test -p loco-embed --test s1_eval -- --nocapture"
+
+[tasks.eval-s1-onnx]
+description = "Run S1/deixis eval with real bekko-a8m (skips if uncached)"
+run = "cargo test -p loco-embed --features ort --test s1_eval_onnx -- --nocapture"
+
+[tasks.eval-s2-lfm-encoder]
+description = "Spike LFM2.5 Encoder Prompt-Router on JA S2 cases (needs .tmp/venv-s2)"
+run = ".tmp/venv-s2/bin/python scripts/eval_s2/run_lfm_encoder_router.py"
+
+[tasks.eval-s2-lfm-lm]
+description = "Spike generative LFM2.5-350M on JA S2 cases (needs .tmp/venv-s2)"
+run = ".tmp/venv-s2/bin/python scripts/eval_s2/run_lfm_lm.py"

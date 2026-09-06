@@ -1,0 +1,170 @@
+[
+  {
+    "model": "granite-97m",
+    "tag": "named_return",
+    "related": 0.8212093114852905,
+    "unrelated": 0.7192320823669434,
+    "margin": 0.10197722911834717
+  },
+  {
+    "model": "granite-97m",
+    "tag": "continue_subway",
+    "related": 0.8085278868675232,
+    "unrelated": 0.7618424892425537,
+    "margin": 0.04668539762496948
+  },
+  {
+    "model": "granite-97m",
+    "tag": "continue_curry",
+    "related": 0.80176842212677,
+    "unrelated": 0.7042746543884277,
+    "margin": 0.09749376773834229
+  },
+  {
+    "model": "granite-97m",
+    "tag": "new_vs_topics",
+    "related": 0.6855226755142212,
+    "unrelated": 0.7322293519973755,
+    "margin": -0.0467066764831543
+  },
+  {
+    "model": "granite-97m",
+    "tag": "new_baseball",
+    "related": 0.7127505540847778,
+    "unrelated": 0.7138075828552246,
+    "margin": -0.0010570287704467773
+  },
+  {
+    "model": "granite-97m",
+    "tag": "new_tax",
+    "related": 0.732292890548706,
+    "unrelated": 0.7028211355209351,
+    "margin": 0.029471755027770996
+  },
+  {
+    "model": "granite-97m",
+    "tag": "ambiguous_two_past",
+    "related": 0.7403713464736938,
+    "unrelated": 0.7469902038574219,
+    "margin": -0.006618857383728027
+  },
+  {
+    "model": "granite-97m",
+    "tag": "rank_subway_en",
+    "related": 0.8918710947036743,
+    "unrelated": 0.687704861164093,
+    "margin": 0.2041662335395813
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "named_return",
+    "related": 0.3500242829322815,
+    "unrelated": 0.13791728019714355,
+    "margin": 0.21210700273513794
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "continue_subway",
+    "related": 0.28377705812454224,
+    "unrelated": 0.17867636680603027,
+    "margin": 0.10510069131851196
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "continue_curry",
+    "related": 0.31734412908554077,
+    "unrelated": 0.0987241193652153,
+    "margin": 0.21862000972032547
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "new_vs_topics",
+    "related": 0.07089996337890625,
+    "unrelated": 0.16467204689979553,
+    "margin": -0.09377208352088928
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "new_baseball",
+    "related": 0.043522678315639496,
+    "unrelated": -0.008230462670326233,
+    "margin": 0.05175314098596573
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "new_tax",
+    "related": 0.02401411533355713,
+    "unrelated": 0.10456901788711548,
+    "margin": -0.08055490255355835
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "ambiguous_two_past",
+    "related": 0.05073098838329315,
+    "unrelated": 0.1761220395565033,
+    "margin": -0.12539105117321014
+  },
+  {
+    "model": "bekko-a8m",
+    "tag": "rank_subway_en",
+    "related": 0.7459120750427246,
+    "unrelated": 0.08613577485084534,
+    "margin": 0.6597763001918793
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "named_return",
+    "related": 0.34239476919174194,
+    "unrelated": 0.1165420264005661,
+    "margin": 0.22585274279117584
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "continue_subway",
+    "related": 0.2860748767852783,
+    "unrelated": 0.236078143119812,
+    "margin": 0.04999673366546631
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "continue_curry",
+    "related": 0.22283431887626648,
+    "unrelated": 0.2043268233537674,
+    "margin": 0.018507495522499084
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "new_vs_topics",
+    "related": 0.023800240829586983,
+    "unrelated": 0.1596728265285492,
+    "margin": -0.1358725856989622
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "new_baseball",
+    "related": 0.12014719098806381,
+    "unrelated": 0.050976790487766266,
+    "margin": 0.06917040050029755
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "new_tax",
+    "related": 0.04138455539941788,
+    "unrelated": 0.0763496607542038,
+    "margin": -0.03496510535478592
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "ambiguous_two_past",
+    "related": 0.0006765462458133698,
+    "unrelated": 0.21751254796981812,
+    "margin": -0.21683600172400475
+  },
+  {
+    "model": "bekko-a25m",
+    "tag": "rank_subway_en",
+    "related": 0.7347850799560547,
+    "unrelated": -0.005811970680952072,
+    "margin": 0.7405970506370068
+  }
+]

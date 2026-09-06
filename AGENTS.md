@@ -2,7 +2,7 @@
 
 ## Overview
 
-On-device local agent for laptop and mobile. Inference via **LiteRT-LM** and **Gemma 4 E4B** (first-run model download). Memory will follow chatstream-inspired hierarchical context (implemented in-tree, not as a hard dependency on chatstream). Topic detection (S1) will use **granite-embedding-97m-multilingual-r2**.
+On-device local agent for laptop and mobile. Inference via **LiteRT-LM** and **Gemma 4 E4B** (first-run model download). Memory will follow chatstream-inspired hierarchical context (implemented in-tree, not as a hard dependency on chatstream). Topic detection (S1) uses **bekko-embedding-v1-a8m**.
 
 Design notes: `docs/research-reports/2026-09-05-local-agent-stack-consultation.md`.
 
@@ -10,8 +10,9 @@ Design notes: `docs/research-reports/2026-09-05-local-agent-stack-consultation.m
 
 ```
 crates/loco-cli/      # CLI binary (`loco`)
-crates/loco-engine/   # model catalog, cache, LiteRT-LM chat session
-crates/loco-memory/   # thin session memory (turns / recent-N / summary)
+crates/loco-engine/   # model catalog, cache, LiteRT-LM chat
+crates/loco-memory/   # session memory (turns, summary, topic chunks)
+crates/loco-embed/    # bekko-a8m ONNX embed + S1 topic cascade
 docs/                 # engineering docs (English)
 docs/research-reports/
 git-hooks/            # pre-push fmt/clippy

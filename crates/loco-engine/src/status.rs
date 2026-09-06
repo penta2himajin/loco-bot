@@ -17,9 +17,22 @@ impl ModelStatus {
     }
 }
 
+/// Status of the primary (first) file for a model.
 pub fn model_status(layout: &CacheLayout, id: ModelId) -> ModelStatus {
     let spec = ModelSpec::for_id(id);
-    let path = layout.model_path(spec);
+    file_status(layout, id, spec.primary_file())
+}
+
+/// True when every listed artifact for `id` exists and is non-empty.
+pub fn model_fully_ready(layout: &CacheLayout, id: ModelId) -> bool {
+    let spec = ModelSpec::for_id(id);
+    spec.files
+        .iter()
+        .all(|rel| file_status(layout, id, rel).is_ready())
+}
+
+pub fn file_status(layout: &CacheLayout, id: ModelId, relative: &str) -> ModelStatus {
+    let path = layout.model_file(id, relative);
     match std::fs::metadata(&path) {
         Ok(meta) if meta.is_file() => ModelStatus::Present {
             path,
@@ -63,5 +76,18 @@ mod tests {
             ModelStatus::Present { bytes, .. } => assert_eq!(bytes, 12),
             other => panic!("expected Present, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bekko_needs_both_files() {
+        let dir = tempdir().unwrap();
+        let layout = CacheLayout::new(dir.path());
+        let onnx = layout.model_file(ModelId::BekkoA8m, "onnx/model.onnx");
+        std::fs::create_dir_all(onnx.parent().unwrap()).unwrap();
+        std::fs::write(&onnx, b"onnx").unwrap();
+        assert!(!model_fully_ready(&layout, ModelId::BekkoA8m));
+        let tok = layout.model_file(ModelId::BekkoA8m, "tokenizer.json");
+        std::fs::write(&tok, b"{}").unwrap();
+        assert!(model_fully_ready(&layout, ModelId::BekkoA8m));
     }
 }

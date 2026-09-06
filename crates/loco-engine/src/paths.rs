@@ -28,12 +28,22 @@ impl CacheLayout {
     }
 
     pub fn model_path(&self, spec: &ModelSpec) -> PathBuf {
-        self.model_dir(spec.id).join(spec.filename)
+        self.model_file(spec.id, spec.primary_file())
+    }
+
+    /// Path to a specific relative artifact under a model id directory.
+    pub fn model_file(&self, id: ModelId, relative: &str) -> PathBuf {
+        self.model_dir(id).join(relative)
     }
 
     /// Default JSON path for the thin session memory store.
     pub fn memory_path(&self) -> PathBuf {
         self.root.join("memory").join("session.json")
+    }
+
+    /// Durable user notes (tool: note_write / note_read).
+    pub fn notes_path(&self) -> PathBuf {
+        self.root.join("notes").join("notes.json")
     }
 }
 
@@ -70,6 +80,15 @@ mod tests {
         assert_eq!(
             layout.memory_path(),
             PathBuf::from("/tmp/loco-cache/memory/session.json")
+        );
+    }
+
+    #[test]
+    fn notes_path_under_cache_root() {
+        let layout = CacheLayout::new("/tmp/loco-cache");
+        assert_eq!(
+            layout.notes_path(),
+            PathBuf::from("/tmp/loco-cache/notes/notes.json")
         );
     }
 }

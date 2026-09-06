@@ -1,0 +1,7 @@
+# Eval-only deps for S2 LFM spikes (not a product runtime).
+torch>=2.2
+transformers>=4.50
+accelerate
+safetensors
+sentencepiece
+protobuf

@@ -1,0 +1,337 @@
+{
+  "version": 1,
+  "name": "bekko-en-zh-resolve",
+  "cases": [
+    {
+      "kind": "embed_rank",
+      "id": "en_rank_subway",
+      "anchor": "Tell me about the Tokyo subway",
+      "closer": "How to buy Tokyo subway tickets",
+      "farther": "How to make a banana smoothie",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "en_rank_curry",
+      "anchor": "Teach me how to make curry in detail",
+      "closer": "Which spices should I use?",
+      "farther": "How to buy Tokyo subway tickets",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "en_rank_weather",
+      "anchor": "What is tomorrow's weather forecast?",
+      "closer": "Will I need an umbrella tomorrow?",
+      "farther": "Detailed curry recipe",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "zh_rank_subway",
+      "anchor": "介绍一下东京地铁",
+      "closer": "如何购买东京地铁票",
+      "farther": "香蕉奶昔的做法",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "zh_rank_curry",
+      "anchor": "详细教我做咖喱",
+      "closer": "应该用什么香料？",
+      "farther": "如何购买东京地铁票",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "zh_rank_weather",
+      "anchor": "明天天气预报怎么样",
+      "closer": "明天需要带伞吗？",
+      "farther": "详细的咖喱做法",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_continue_subway",
+      "user": "Where do I buy a subway ticket?",
+      "current_text": "How to buy Tokyo subway tickets",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_continue_curry",
+      "user": "Should I add garam masala?",
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "How to buy Tokyo subway tickets" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_continue_weather",
+      "user": "Will it rain tomorrow morning?",
+      "current_text": "Tomorrow weather forecast",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["weather", "curry"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_continue_subway",
+      "user": "地铁票怎么买比较方便？",
+      "current_text": "如何购买东京地铁票",
+      "past_texts": [{ "index": 1, "text": "详细的咖喱做法" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_continue_curry",
+      "user": "咖喱要放多少土豆？",
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "如何购买东京地铁票" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_continue_weather",
+      "user": "明天出门要带伞吗？",
+      "current_text": "明天天气预报",
+      "past_texts": [{ "index": 1, "text": "详细的咖喱做法" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["天气", "咖喱"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_continue_expand",
+      "user": "why?",
+      "previous_user": "How to buy Tokyo subway tickets",
+      "use_expand": true,
+      "current_text": "How to buy Tokyo subway tickets",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_continue_expand_more",
+      "user": "tell me more",
+      "previous_user": "Detailed curry recipe",
+      "use_expand": true,
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "How to buy Tokyo subway tickets" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_continue_expand",
+      "user": "为什么？",
+      "previous_user": "如何购买东京地铁票",
+      "use_expand": true,
+      "current_text": "如何购买东京地铁票",
+      "past_texts": [{ "index": 1, "text": "详细的咖喱做法" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_continue_expand_more",
+      "user": "再说详细一点",
+      "previous_user": "详细的咖喱做法",
+      "use_expand": true,
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "如何购买东京地铁票" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_new_quantum",
+      "user": "Explain quantum computing in one sentence",
+      "current_text": "How to buy Tokyo subway tickets",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_new_baseball",
+      "user": "What is the designated hitter rule in baseball?",
+      "current_text": "How to buy Tokyo subway tickets",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_new_tax",
+      "user": "What is the basic deduction for tax filing?",
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "How to buy Tokyo subway tickets" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_new_baseball",
+      "user": "棒球指定打击制度是什么？",
+      "current_text": "如何购买东京地铁票",
+      "past_texts": [{ "index": 1, "text": "详细的咖喱做法" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_new_piano",
+      "user": "钢琴该怎么调音？",
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "如何购买东京地铁票" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_new_iss",
+      "user": "国际空间站离地面多高？",
+      "current_text": "明天天气预报",
+      "past_texts": [
+        { "index": 0, "text": "如何购买东京地铁票" },
+        { "index": 1, "text": "详细的咖喱做法" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱", "天气"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_named_return_subway",
+      "user": "go back to the subway topic",
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "How to buy Tokyo subway tickets" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_named_return_curry",
+      "user": "go back to the curry topic",
+      "current_text": "How to buy Tokyo subway tickets",
+      "past_texts": [{ "index": 1, "text": "Detailed curry recipe" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Return", "chunk_index": 1 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_named_return_weather",
+      "user": "back to the weather discussion",
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "Tomorrow weather forecast" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["weather", "curry"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_named_return_subway",
+      "user": "回到刚才地铁的话题",
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "如何购买东京地铁票" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_named_return_curry",
+      "user": "回到刚才咖喱的话题",
+      "current_text": "如何购买东京地铁票",
+      "past_texts": [{ "index": 1, "text": "详细的咖喱做法" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Return", "chunk_index": 1 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_named_return_weather",
+      "user": "回到刚才天气的话题",
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "明天天气预报" }],
+      "previous_chunk": 1,
+      "chunk_labels": ["天气", "咖喱"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_ru_stack_return",
+      "user": "earlier",
+      "current_text": "Detailed curry recipe",
+      "past_texts": [{ "index": 0, "text": "How to buy Tokyo subway tickets" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "curry"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_ru_stack_return",
+      "user": "回到刚才的话题",
+      "current_text": "详细的咖喱做法",
+      "past_texts": [{ "index": 0, "text": "如何购买东京地铁票" }],
+      "previous_chunk": 0,
+      "chunk_labels": ["地铁", "咖喱"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "en_ru_multipast_clarify",
+      "user": "earlier",
+      "current_text": "Tomorrow weather forecast",
+      "past_texts": [
+        { "index": 0, "text": "How to buy Tokyo subway tickets" },
+        { "index": 1, "text": "Detailed curry recipe" }
+      ],
+      "chunk_labels": ["subway", "curry", "weather"],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "zh_ru_multipast_clarify",
+      "user": "回到刚才的话题",
+      "current_text": "明天天气预报",
+      "past_texts": [
+        { "index": 0, "text": "如何购买东京地铁票" },
+        { "index": 1, "text": "详细的咖喱做法" }
+      ],
+      "chunk_labels": ["地铁", "咖喱", "天气"],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 3,
+        "question_contains": "どの話"
+      }
+    }
+  ]
+}

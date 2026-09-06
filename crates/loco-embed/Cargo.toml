@@ -1,0 +1,27 @@
+[package]
+name = "loco-embed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Bekko embedding + S1 topic detection for loco-bot"
+
+[features]
+default = []
+# ONNX Runtime + Hugging Face tokenizers for bekko-a8m.
+ort = ["dep:ort", "dep:tokenizers"]
+
+[dependencies]
+dirs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ort = { version = "2.0.0-rc.13", optional = true, default-features = true, features = [
+    "download-binaries",
+] }
+tokenizers = { version = "0.21", optional = true, default-features = false, features = [
+    "onig",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "name": "ja-deixis-s1-edge",
+  "cases": [
+    {
+      "kind": "deixis",
+      "id": "deixis_en_go_back",
+      "user": "go back to the subway topic",
+      "expect_deixis": "ReturnNamed"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_en_earlier_unspecified",
+      "user": "earlier",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_前のやつ",
+      "user": "前のやつに戻って",
+      "expect_deixis": "ReturnUnspecified"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_あれについて",
+      "user": "あれについてもう少し",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_bare_続き",
+      "user": "続き",
+      "expect_deixis": "ContinueHint"
+    },
+    {
+      "kind": "deixis",
+      "id": "deixis_named_cooking",
+      "user": "さっきのカレーの話に戻って",
+      "expect_deixis": "ReturnNamed"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_詳しく_prepends",
+      "user": "もっと詳しく",
+      "previous_user": "カレーの作り方を一言",
+      "expect_expanded_contains": "カレー"
+    },
+    {
+      "kind": "expand",
+      "id": "expand_named_return_clean",
+      "user": "さっきの地下鉄の話に戻って",
+      "previous_user": "カレーの作り方を一言",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "expand",
+      "id": "expand_continue_no_prior",
+      "user": "なぜ？",
+      "expect_unchanged": true
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_unspecified_single_past",
+      "user": "さっきの話",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 2] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "chunk_labels": ["only-past", "x", "now"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_unspecified_no_past_continue",
+      "user": "さっきの話",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 1] },
+      "past": [],
+      "chunk_labels": ["a", "b"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_no_current_new",
+      "user": "新しい話題です",
+      "query_emb": { "unit": [4, 0] },
+      "past": [],
+      "chunk_labels": [],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve",
+      "id": "resolve_return_beats_weak_current",
+      "user": "地下鉄の切符",
+      "query_emb": { "unit": [4, 0] },
+      "current": { "unit": [4, 3] },
+      "past": [{ "index": 0, "unit": [4, 0] }],
+      "previous_chunk": 0,
+      "chunk_labels": ["subway", "x", "y", "now"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "clarify_match",
+      "id": "clarify_partial_label",
+      "user": "カレー",
+      "candidates": [
+        { "label": "今の話題のまま", "action": { "kind": "ContinueCurrent" } },
+        {
+          "label": "カレーの作り方メモ",
+          "action": { "kind": "ReturnTo", "chunk_index": 1 }
+        }
+      ],
+      "expect_action": { "kind": "ReturnTo", "chunk_index": 1 }
+    },
+    {
+      "kind": "clarify_match",
+      "id": "clarify_no_match_garbage",
+      "user": "zzz",
+      "candidates": [
+        { "label": "今の話題のまま", "action": { "kind": "ContinueCurrent" } },
+        {
+          "label": "地下鉄",
+          "action": { "kind": "ReturnTo", "chunk_index": 0 }
+        }
+      ],
+      "expect_no_match": true
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "min_cases_per_pattern": 3,
+  "patterns": {
+    "clarify.empty_no_match": [
+      "clarify_empty_no_match_1",
+      "clarify_empty_no_match_2",
+      "clarify_empty_no_match_3"
+    ],
+    "clarify.keyword_ReturnTo": [
+      "clarify_by_keyword",
+      "clarify_by_keyword_curry",
+      "clarify_by_keyword_subway2"
+    ],
+    "clarify.no_match": [
+      "clarify_no_match_99",
+      "clarify_no_match_garbage",
+      "clarify_no_match_zzz"
+    ],
+    "clarify.number_ContinueCurrent": [
+      "clarify_stay_current",
+      "clarify_stay_keyword",
+      "clarify_stay_number_again"
+    ],
+    "clarify.number_ReturnTo": [
+      "clarify_by_number",
+      "clarify_by_number_3",
+      "clarify_by_number_curry"
+    ],
+    "clarify.partial_ReturnTo": [
+      "clarify_partial_2",
+      "clarify_partial_3",
+      "clarify_partial_label"
+    ],
+    "deixis.ContinueHint": [
+      "deixis_bare_続き",
+      "deixis_continue_それ",
+      "deixis_continue_なぜ",
+      "deixis_continue_詳しく",
+      "deixis_あれについて"
+    ],
+    "deixis.Plain": [
+      "deixis_plain_curry",
+      "deixis_plain_subway",
+      "deixis_plain_weather"
+    ],
+    "deixis.ReturnNamed": [
+      "deixis_en_go_back",
+      "deixis_named_cooking",
+      "deixis_named_return"
+    ],
+    "deixis.ReturnUnspecified": [
+      "deixis_en_earlier_unspecified",
+      "deixis_unspecified_short",
+      "deixis_unspecified_前の話",
+      "deixis_unspecified_戻って",
+      "deixis_前のやつ"
+    ],
+    "deixis.empty_Plain": [
+      "deixis_empty_plain_1",
+      "deixis_empty_plain_2",
+      "deixis_empty_plain_3"
+    ],
+    "expand.ContinueHint_no_prior": [
+      "expand_continue_no_prior",
+      "expand_それ_no_prior",
+      "expand_詳しく_no_prior"
+    ],
+    "expand.ContinueHint_prepend": [
+      "expand_continue_prepends",
+      "expand_それ_prepends",
+      "expand_詳しく_prepends"
+    ],
+    "expand.Plain_unchanged": [
+      "expand_plain_tax_unchanged",
+      "expand_plain_unchanged",
+      "expand_plain_weather_unchanged"
+    ],
+    "expand.ReturnNamed_clean": [
+      "expand_named_return_clean",
+      "expand_rn_curry_clean",
+      "expand_rn_weather_clean"
+    ],
+    "expand.ReturnUnspecified_clean": [
+      "expand_return_clean",
+      "expand_ru_前の話_clean",
+      "expand_ru_戻って_clean"
+    ],
+    "onnx.embed_rank": [
+      "rank_curry_over_subway",
+      "rank_subway_over_banana",
+      "rank_weather_over_curry"
+    ],
+    "onnx.resolve_text.Continue": [
+      "onnx_continue_curry",
+      "onnx_continue_subway",
+      "onnx_continue_subway_home"
+    ],
+    "onnx.resolve_text.Continue_expand": [
+      "onnx_continue_deixis_expand",
+      "onnx_continue_expand_curry",
+      "onnx_continue_expand_weather"
+    ],
+    "onnx.resolve_text.New_empty_past": [
+      "onnx_new_empty_baseball",
+      "onnx_new_empty_iss",
+      "onnx_new_empty_past"
+    ],
+    "onnx.resolve_text.New_multipast": [
+      "onnx_new_baseball_two_pasts",
+      "onnx_new_piano_two_pasts",
+      "onnx_new_with_two_pasts"
+    ],
+    "onnx.resolve_text.New_single_past": [
+      "onnx_new_baseball_with_past",
+      "onnx_new_tax_with_past",
+      "onnx_new_with_past"
+    ],
+    "onnx.resolve_text.RU_multipast_Clarify": [
+      "onnx_ambiguous_past_clarify",
+      "onnx_ru_multipast_clarify_2",
+      "onnx_ru_multipast_clarify_3"
+    ],
+    "onnx.resolve_text.RU_previous_Return": [
+      "onnx_ru_stack_return_2",
+      "onnx_ru_stack_return_3",
+      "onnx_unspecified_stack"
+    ],
+    "onnx.resolve_text.Return_named": [
+      "onnx_named_return_curry",
+      "onnx_named_return_subway",
+      "onnx_named_return_weather"
+    ],
+    "resolve.RU.empty_past_current_Continue": [
+      "resolve_ru_empty_past_continue_2",
+      "resolve_ru_empty_past_continue_3",
+      "resolve_unspecified_no_past_continue"
+    ],
+    "resolve.RU.empty_past_no_current_New": [
+      "resolve_ru_empty_no_current_new_1",
+      "resolve_ru_empty_no_current_new_2",
+      "resolve_ru_empty_no_current_new_3"
+    ],
+    "resolve.RU.multipast_Clarify": [
+      "resolve_ru_multipast_clarify_2",
+      "resolve_ru_multipast_clarify_3",
+      "resolve_unspecified_no_stack_clarify"
+    ],
+    "resolve.RU.single_past_Return": [
+      "resolve_ru_single_past_2",
+      "resolve_ru_single_past_3",
+      "resolve_unspecified_single_past"
+    ],
+    "resolve.RU.with_previous_Return": [
+      "resolve_ru_stack_return_1",
+      "resolve_ru_stack_return_2",
+      "resolve_ru_stack_return_3",
+      "resolve_unspecified_stack_return"
+    ],
+    "resolve.S1.Continue": [
+      "resolve_continue_strong_current",
+      "resolve_s1_continue_2",
+      "resolve_s1_continue_3"
+    ],
+    "resolve.S1.ContinueHint": [
+      "resolve_s1_continue_hint_1",
+      "resolve_s1_continue_hint_2",
+      "resolve_s1_continue_hint_3"
+    ],
+    "resolve.S1.New_no_current": [
+      "resolve_no_current_new",
+      "resolve_s1_new_no_current_2",
+      "resolve_s1_new_no_current_3"
+    ],
+    "resolve.S1.New_weak": [
+      "resolve_new_when_weak",
+      "resolve_s1_new_weak_2",
+      "resolve_s1_new_weak_3"
+    ],
+    "resolve.S1.Return_named": [
+      "resolve_named_return_via_s1",
+      "resolve_s1_return_named_2",
+      "resolve_s1_return_named_3"
+    ],
+    "resolve.S1.Return_plain": [
+      "resolve_return_beats_weak_current",
+      "resolve_s1_return_plain_2",
+      "resolve_s1_return_plain_3"
+    ],
+    "resolve.S1.ambiguous_past_Clarify": [
+      "resolve_ambiguous_past_clarify",
+      "resolve_s1_ambiguous_2",
+      "resolve_s1_ambiguous_3"
+    ],
+    "resolve.S1.gray_S2_Clarify": [
+      "resolve_s1_gray_s2_clarify_1",
+      "resolve_s1_gray_s2_clarify_2",
+      "resolve_s1_gray_s2_clarify_3"
+    ],
+    "resolve.S1.gray_S2_New": [
+      "resolve_s1_gray_s2_new_1",
+      "resolve_s1_gray_s2_new_2",
+      "resolve_s1_gray_s2_new_3"
+    ]
+  }
+}

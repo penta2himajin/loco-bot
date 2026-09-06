@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "name": "ja-bekko-resolve",
+  "cases": [
+    {
+      "kind": "embed_rank",
+      "id": "rank_subway_over_banana",
+      "anchor": "東京の地下鉄について教えて",
+      "closer": "Tell me about the Tokyo subway",
+      "farther": "バナナのスムージーの作り方",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "embed_rank",
+      "id": "rank_curry_over_subway",
+      "anchor": "カレーの作り方を詳しく教えて",
+      "closer": "スパイスは何を使う？",
+      "farther": "東京の地下鉄の切符の買い方",
+      "min_margin": 0.05
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_named_return_subway",
+      "user": "さっきの地下鉄の話に戻って",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_subway",
+      "user": "乗り換えのコツは？",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["x", "カレー"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_curry",
+      "user": "スパイスは何を使う？",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_continue_deixis_expand",
+      "user": "それについて",
+      "previous_user": "東京の地下鉄の切符の買い方",
+      "use_expand": true,
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "Continue" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_unspecified_stack",
+      "user": "さっきの話",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "Return", "chunk_index": 0 }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_with_past",
+      "user": "量子コンピュータの基礎を一言で",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_baseball_with_past",
+      "user": "プロ野球の指名打者制度とは",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_tax_with_past",
+      "user": "確定申告の基礎控除って何",
+      "current_text": "カレーの作り方を詳しく教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地下鉄", "カレー"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_with_two_pasts",
+      "user": "量子コンピュータの基礎を一言で",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" },
+        { "index": 2, "text": "明日の天気予報を教えて" }
+      ],
+      "previous_chunk": 1,
+      "chunk_labels": ["地下鉄", "カレー", "天気"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_baseball_two_pasts",
+      "user": "プロ野球の指名打者制度とは",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" },
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "previous_chunk": 0,
+      "chunk_labels": ["地下鉄", "カレー", "天気"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_new_empty_past",
+      "user": "量子コンピュータの基礎を一言で",
+      "current_text": "東京の地下鉄の切符の買い方",
+      "past_texts": [],
+      "chunk_labels": ["地下鉄"],
+      "expect": { "outcome": "New" }
+    },
+    {
+      "kind": "resolve_text",
+      "id": "onnx_ambiguous_past_clarify",
+      "user": "さっきの話に戻って",
+      "current_text": "明日の天気予報を教えて",
+      "past_texts": [
+        { "index": 0, "text": "東京の地下鉄の切符の買い方" },
+        { "index": 1, "text": "カレーの作り方を詳しく教えて" }
+      ],
+      "chunk_labels": ["地下鉄", "カレー", "天気"],
+      "expect": {
+        "outcome": "NeedsClarification",
+        "min_candidates": 2,
+        "question_contains": "どの話"
+      }
+    }
+  ]
+}

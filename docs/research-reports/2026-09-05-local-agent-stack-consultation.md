@@ -1,7 +1,7 @@
 # Local Agent Stack Consultation — LiteRT-LM, Gemma 4 E4B, Memory, Embeddings
 
 - **Date**: 2026-09-05
-- **Status**: P0–P2 landed (plain chat + thin session memory)
+- **Status**: P0–P5 landed (chat + memory + S1 + compiler + deixis + tools)
 - **Scope**: Mobile/laptop small local agent (`loco-bot`)
 
 ## Goal
@@ -22,7 +22,7 @@ Build a small on-device agent for mobile and laptop that:
 | Text-only pack | Defer | Official text-only `.litertlm` not published; vision/audio already lazy-loaded; unpack/repack later if needed |
 | Model distribution | First-run download OK | Cache locally; no requirement to ship weights in the app binary |
 | Memory approach | Chatstream *concepts*, not the crate | Hierarchical store + context compile + cascade; reimplement thin for loco-bot |
-| Embedding (S1) | **`ibm-granite/granite-embedding-97m-multilingual-r2`** | See comparison below |
+| Embedding (S1) | **`hotchpotch/bekko-embedding-v1-a8m`** | Switched 2026-09-06 after JA separation probe (was granite-97m) |
 | Needle 2 | Optional later (v2+) | Tool router / structured extract / S2 worker — not the memory store |
 | Language | **Rust-first** | Product binary is Rust; Python OK for eval / one-off scripts only |
 | Toolchain | **mise** | Pin Rust (and later helpers) via repo `mise.toml` |
@@ -48,7 +48,7 @@ Build a small on-device agent for mobile and laptop that:
 
 - Final form is a cross-platform local agent; a single Rust core + thin CLIs/JNI later beats a Python→Rust rewrite.
 - Official LiteRT-LM surface for non-mobile is the **C API**; community crates (`litertlm-rs` / `litertlm-sys`) wrap it. Python is not architecturally privileged.
-- Memory (chatstream-shaped) and granite via ONNX (`ort`) fit Rust cleanly.
+- Memory (chatstream-shaped) and bekko via ONNX (`ort`) fit Rust cleanly.
 - Risk: Rust bindings are community-maintained — keep a thin FFI boundary so we can swap crates or bind `engine.h` directly if needed.
 - Parallel smoke: official `litert-lm` CLI can validate models without blocking the Rust path.
 
@@ -59,17 +59,17 @@ Build a small on-device agent for mobile and laptop that:
 | **P0** | mise + Rust workspace + model download / doctor CLI |
 | **P1** | LiteRT-LM + E4B plain chat in CLI (streaming) |
 | **P2** | Thin memory (turns + recent-N + simple summary) |
-| **P3** | granite-97m-r2 S1 topic detection |
-| **P4** | Context compiler → E4B |
-| **P5** | Small tool surface |
-| **P6** | Needle / reranker / text-only pack as needed |
+| **P3** | bekko-a8m S1 topic detection — **landed** (`loco-embed` + session chunks; was granite-97m) |
+| **P4** | Context compiler → E4B — **landed** (`loco-memory::compile`, resident + dynamic on return) |
+| **P5** | Small tool surface — **landed** (`loco-engine::tools` + agent loop) |
+| **P6** | As-needed backlog (Needle / reranker / text-only); **P6.0** S1 eval harness first |
 
 ## Stack sketch
 
 ```
 User input
   → Memory middleware (chatstream-inspired, simplified)
-       S1: granite-97m-r2 cosine vs chunk/root embeddings
+       S1: bekko-a8m cosine vs chunk/root embeddings
        S1b (optional later): cross-encoder rerank top-k only
        S2 (optional later): Needle 2 or E4B structured classify
        Compiler: resident (root + recent N) + dynamic (returned chunk)
@@ -122,27 +122,71 @@ Use case: few–tens of topic chunks per session, score every turn, co-reside wi
 | Model | Role | Rough retrieval (MMTEB ML) | Edge fit |
 |-------|------|----------------------------|----------|
 | Xenova / paraphrase-multilingual-MiniLM-L12-v2 | Older STS baseline | Weaker for retrieval/topic separation | Tiny, proven, good for spikes only |
-| bekko-a8m / a25m | Ultra-compact multilingual retrieval | ~56–57.5 | Fastest/smallest; solid if mobile-first |
-| **granite-embedding-97m-multilingual-r2** | Compact multilingual retrieval | **~60.3** | **Chosen** — quality/size balance |
+| bekko-a8m / a25m | Ultra-compact multilingual retrieval | ~56–57.5 | **Chosen (a8m)** — best related−unrelated margin on JA S1 pairs |
+| granite-embedding-97m-multilingual-r2 | Compact multilingual retrieval | ~60.3 | Prior pick; compressed score band hurt New/Continue on JA |
 | granite-embedding-311m-multilingual-r2 | Full-size multilingual retrieval | ~65.2 | Overkill for S1; keep as upgrade if Overlap stays high |
 | Cross-encoder reranker | Precision on top-k | N/A | Optional S1b only; not every-chunk every turn |
 
-**Why granite-97m over 311m for this product**
+**Why bekko-a8m (2026-09-06)**
 
-- Topic nav compares against a small candidate set; +5 retrieval points rarely beat better thresholds / query expansion
-- Query embedding runs every turn; 97m is materially cheaper on CPU/MPS
-- E4B already dominates RAM/disk; keep the memory sidecar lean
-- IBM guidance: 97m for edge/latency; 311m when accuracy is top priority and budget allows
+- Measured related−unrelated margins on shared JA pairs: granite mean ≈+0.11; bekko-a8m ≈+0.30; New max-sim drops from ~0.72 to ~0.04–0.16
+- a8m beat a25m on this micro-suite and is smaller/faster; ONNX ~130MB + tokenizer
+- Same 384-d Matryoshka space as before (mean pool, not CLS)
+- Recalibrated S1 thresholds: continue/return ≥ 0.26, new_max 0.20
 
-**Name note**: “bekko-a29m” was not found on Hub; public sizes are **a8m** and **a25m**.
+**Earlier note (why granite-97m over 311m)** — kept for history; superseded by bekko swap above.
 
 ## Open items (post-P0)
 
 1. Persistence: SQLite vs files; sync story across devices (if any)
 2. Tool surface for v1 (clock, notes, local search, …)
 3. When (if ever) to add Needle 2 and/or a cross-encoder S1b
-4. Japanese UX assumptions and evaluation set for S1 thresholds
+4. Japanese UX assumptions and evaluation set for S1 thresholds — **started** (`fixtures/s1/ja-deixis-s1-logic.json`)
 5. Which LiteRT-LM Rust binding to standardize on for P1 (`litertlm-rs` vs alternatives)
+
+## P3 implementation notes (2026-09-05; embedder updated 2026-09-06)
+
+- Crate `loco-embed`: cosine + short-query expansion + S1 cascade; optional `ort` feature loads `onnx/model.onnx` (**mean** pool, L2 normalize, 384-d).
+- Cache id `bekko-a8m` downloads `onnx/model.onnx` + `tokenizer.json` from `hotchpotch/bekko-embedding-v1-a8m` (replaced `granite-97m`).
+- `SessionMemory` persists `chunks` / `current_chunk`; chat logs `[topic: …]` and includes active topic in the system preamble.
+- Default thresholds: continue ≥ 0.26, return ≥ 0.26, confident new if best < 0.20 (bekko-a8m calibrated 2026-09-06); gray zone → S2 (`GraySafetyS2`: clarify close mid-pasts, else New). Query expansion is deictic/bare-followup only (not every short topical line).
+- Next: P4 context compiler (resident + dynamic chunk on return).
+
+## P4 implementation notes (2026-09-05)
+
+- `loco_memory::compile(switch)` builds resident (summary + active topic + optional recent turns) and, on `TopicSwitch::Return`, a dynamic snapshot of that chunk’s turns.
+- CLI injects compiled notes in-band every turn (`[context: resident(+dynamic) N chars]`). Continue/New omit the recent-turn dump (Conversation already has it); Return includes dynamic + a short recent window.
+
+## P4.1 deixis resolve (2026-09-05)
+
+- Lexicon deixis classes: Plain / ContinueHint / ReturnNamed / ReturnUnspecified.
+- Unspecified return ("さっきの話") uses `previous_chunk` (topic stack N-1); if missing and multiple past chunks → ask which topic.
+- Named return still uses bekko S1; close top-2 past scores → clarify.
+- Continue deixis expands with the previous user turn only.
+- Verified: `さっきの話` → return#0+dynamic; `それについて` → continue; seeded ambiguous → clarify → `2` ack.
+
+## P5 implementation notes (2026-09-05)
+
+- `loco-engine::tools`: OpenAI-style schemas via `ConversationConfig::set_tools`; parse `tool_calls`; built-ins `get_current_time`, `note_write` / `note_read` (`…/notes/notes.json`), `session_stats`.
+- `ChatSession::reply_with_tools` non-streaming agent loop (cap 4 rounds); CLI default-on, `--no-tools` to disable.
+- Next: measure before Needle / reranker / text-only; first step = S1/deixis eval harness.
+
+## P6.0 S1/deixis eval harness (2026-09-06)
+
+- `loco-embed::eval` loads declarative JSON suites; kinds: `deixis` / `expand` / `resolve` / `clarify_match` / `resolve_text` / `embed_rank`.
+- Logic fixtures: `crates/loco-embed/fixtures/s1/` (synthetic embeddings — CI needs no ONNX). Seed + edge suites (~36 cases).
+- ONNX fixtures: `crates/loco-embed/fixtures/s1_onnx/` — real bekko-a8m embed; skip if uncached.
+- Run: `mise run eval-s1` / `mise run eval-s1-onnx`.
+
+## P6.1 threshold calibration + S2 (2026-09-06)
+
+- First pass used granite bands (Continue/Return ≈0.80–0.90; hard negatives ≈0.71–0.73) with defaults 0.78 / 0.50 and `clarify_min` 0.735.
+- Separation probe (`scripts/eval_embed_sep/`): bekko-a8m margins beat granite; S1 resolve suite **14/14** after recalibration.
+- **Current defaults (bekko-a8m)**: `continue_min`/`return_min` = **0.26**, `new_max` = **0.20** (`S1Thresholds::bekko_calibrated`); `GraySafetyS2.clarify_min` = **0.23**.
+- S1 returns `S1Outcome::Gray` instead of silent New; S2 clarifies close mid-pasts or chooses New — no soft-Return on weak scores.
+- Ambiguous multipast clarify in ONNX fixtures is deixis-driven (`さっきの話に戻って` without previous stack) — embedding mid-band clarify is rare with bekko’s separation.
+- LFM spikes (`scripts/eval_s2/`): Encoder Prompt-Router **2/6**, generative LFM2.5-350M **2/6** on JA S2 cases — **not adopted**.
+- Deferred: Prompt-Router fine-tune, cross-encoder, text-only pack.
 
 ## References
 
