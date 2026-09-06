@@ -5,9 +5,10 @@ use serde_json::{Map, Value};
 use loco_engine::ToolConsentGate;
 
 /// Risk class for tool execution prompts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum ToolRisk {
     /// Built-in low-impact tools (clock, notes, stats).
+    #[default]
     Low,
     /// Local filesystem or similar.
     Medium,
@@ -63,13 +64,31 @@ impl ToolConsent for AllowListedTools {
     }
 }
 
+/// Auto-allow tools at or below a risk ceiling.
+#[derive(Debug, Clone, Copy)]
+pub struct AllowUpTo {
+    pub max: ToolRisk,
+}
+
+impl Default for AllowUpTo {
+    fn default() -> Self {
+        Self { max: ToolRisk::Low }
+    }
+}
+
+impl ToolConsent for AllowUpTo {
+    fn allow(&mut self, _name: &str, _args: &Map<String, Value>, risk: ToolRisk) -> bool {
+        risk <= self.max
+    }
+}
+
 /// Auto-allow low risk; deny medium/high (CLI default until interactive prompts land).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AllowLowRiskOnly;
 
 impl ToolConsent for AllowLowRiskOnly {
-    fn allow(&mut self, _name: &str, _args: &Map<String, Value>, risk: ToolRisk) -> bool {
-        matches!(risk, ToolRisk::Low)
+    fn allow(&mut self, name: &str, args: &Map<String, Value>, risk: ToolRisk) -> bool {
+        AllowUpTo { max: ToolRisk::Low }.allow(name, args, risk)
     }
 }
 

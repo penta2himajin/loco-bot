@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hf_hub::api::sync::ApiBuilder;
-use loco_agent::{AgentEvent, AgentSession, AgentSessionConfig};
+use loco_agent::{AgentEvent, AgentSession, AgentSessionConfig, ToolRisk};
 use loco_engine::{
     install_model_file, model_fully_ready, model_status, CacheLayout, InferenceBackend, ModelId,
     ModelSpec, ModelStatus, BEKKO_A8M, GEMMA4_E4B_IT,
@@ -62,9 +62,15 @@ enum Commands {
         /// Skip S1 topic detection even if bekko is cached.
         #[arg(long)]
         no_topic: bool,
-        /// Disable built-in tools (clock, notes, session_stats).
+        /// Disable built-in tools (clock, notes, session_stats, fs_*).
         #[arg(long)]
         no_tools: bool,
+        /// Sandbox root for fs_list / fs_move / fs_rename.
+        #[arg(long)]
+        fs_root: Option<PathBuf>,
+        /// Allow medium-risk tools (local FS) without interactive prompts.
+        #[arg(long)]
+        allow_fs: bool,
         /// Optional one-shot prompt. If omitted, starts an interactive REPL.
         prompt: Option<String>,
     },
@@ -82,6 +88,12 @@ enum Commands {
         /// Disable built-in tools.
         #[arg(long)]
         no_tools: bool,
+        /// Sandbox root for fs_* tools.
+        #[arg(long)]
+        fs_root: Option<PathBuf>,
+        /// Allow medium-risk tools (local FS).
+        #[arg(long)]
+        allow_fs: bool,
     },
 }
 
@@ -121,6 +133,8 @@ fn run() -> Result<()> {
             no_memory,
             no_topic,
             no_tools,
+            fs_root,
+            allow_fs,
             prompt,
         } => cmd_chat(
             &layout,
@@ -129,6 +143,8 @@ fn run() -> Result<()> {
             no_memory,
             no_topic,
             no_tools,
+            fs_root,
+            allow_fs,
             prompt.as_deref(),
         ),
         Commands::Serve {
@@ -136,7 +152,11 @@ fn run() -> Result<()> {
             no_memory,
             no_topic,
             no_tools,
-        } => cmd_serve(&layout, &backend, no_memory, no_topic, no_tools),
+            fs_root,
+            allow_fs,
+        } => cmd_serve(
+            &layout, &backend, no_memory, no_topic, no_tools, fs_root, allow_fs,
+        ),
     }
 }
 
@@ -329,9 +349,13 @@ fn cmd_chat(
     no_memory: bool,
     no_topic: bool,
     no_tools: bool,
+    fs_root: Option<PathBuf>,
+    allow_fs: bool,
     prompt: Option<&str>,
 ) -> Result<()> {
-    let mut agent = open_agent(layout, model, backend, no_memory, no_topic, no_tools)?;
+    let mut agent = open_agent(
+        layout, model, backend, no_memory, no_topic, no_tools, fs_root, allow_fs,
+    )?;
     eprintln!("ready.\n");
 
     if let Some(one_shot) = prompt {
@@ -398,6 +422,8 @@ fn cmd_chat(
     _no_memory: bool,
     _no_topic: bool,
     _no_tools: bool,
+    _fs_root: Option<PathBuf>,
+    _allow_fs: bool,
     _prompt: Option<&str>,
 ) -> Result<()> {
     bail!("chat requires the `inference` feature (LiteRT-LM)")
@@ -411,8 +437,19 @@ fn cmd_serve(
     no_memory: bool,
     no_topic: bool,
     no_tools: bool,
+    fs_root: Option<PathBuf>,
+    allow_fs: bool,
 ) -> Result<()> {
-    let mut agent = open_agent(layout, "gemma4-e4b", backend, no_memory, no_topic, no_tools)?;
+    let mut agent = open_agent(
+        layout,
+        "gemma4-e4b",
+        backend,
+        no_memory,
+        no_topic,
+        no_tools,
+        fs_root,
+        allow_fs,
+    )?;
     eprintln!("serve: JSONL Agent API on stdin/stdout (one request object per line)");
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -449,6 +486,8 @@ fn cmd_serve(
     _no_memory: bool,
     _no_topic: bool,
     _no_tools: bool,
+    _fs_root: Option<PathBuf>,
+    _allow_fs: bool,
 ) -> Result<()> {
     bail!("serve requires the `inference` feature (LiteRT-LM)")
 }
@@ -461,6 +500,8 @@ fn open_agent(
     no_memory: bool,
     no_topic: bool,
     no_tools: bool,
+    fs_root: Option<PathBuf>,
+    allow_fs: bool,
 ) -> Result<AgentSession> {
     let id = ModelId::parse(model).with_context(|| format!("unknown model id: {model}"))?;
     if id != ModelId::Gemma4E4b {
@@ -500,9 +541,15 @@ fn open_agent(
     }
     if !no_tools {
         eprintln!(
-            "tools: get_current_time, note_write, note_read, session_stats ({})",
+            "tools: clock/notes/stats + fs_* / web_search stubs ({})",
             layout.notes_path().display()
         );
+        if let Some(ref root) = fs_root {
+            eprintln!("fs sandbox: {}", root.display());
+        }
+        if allow_fs {
+            eprintln!("consent: medium (FS) allowed");
+        }
     }
     if !no_topic && !no_memory {
         if model_fully_ready(layout, ModelId::BekkoA8m) {
@@ -516,6 +563,12 @@ fn open_agent(
         no_memory,
         no_tools,
         no_topic,
+        fs_root,
+        consent_ceiling: if allow_fs {
+            ToolRisk::Medium
+        } else {
+            ToolRisk::Low
+        },
     };
     let agent = AgentSession::open(layout, backend, memory, config)?;
     if no_topic || no_memory {

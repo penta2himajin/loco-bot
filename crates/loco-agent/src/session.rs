@@ -14,7 +14,7 @@ use loco_embed::{
     TopicS2, DEFAULT_AMBIGUITY_DELTA,
 };
 
-use crate::consent::{AllowLowRiskOnly, ConsentBridge, ToolConsent, ToolRisk};
+use crate::consent::{AllowUpTo, ConsentBridge, ToolConsent, ToolRisk};
 use crate::events::{AgentEvent, ClarifyChoice, TurnOutcome};
 
 #[derive(Debug, Error)]
@@ -32,6 +32,10 @@ pub struct AgentSessionConfig {
     pub no_memory: bool,
     pub no_tools: bool,
     pub no_topic: bool,
+    /// Sandbox root for fs_* tools. Relative paths resolve under this directory.
+    pub fs_root: Option<std::path::PathBuf>,
+    /// Highest tool risk allowed without an interactive prompt.
+    pub consent_ceiling: crate::consent::ToolRisk,
 }
 
 /// Owns memory + optional embedder + chat session for surface-agnostic turns.
@@ -74,7 +78,11 @@ impl AgentSession {
         let tools = if config.no_tools {
             None
         } else {
-            Some(ToolHost::new(layout.notes_path(), memory_path.clone()))
+            Some(ToolHost::with_fs_root(
+                layout.notes_path(),
+                memory_path.clone(),
+                config.fs_root.clone(),
+            ))
         };
 
         let chat = ChatSession::open(
@@ -130,7 +138,10 @@ impl AgentSession {
     /// Run one user turn; returns structured events for any UI shell.
     #[cfg(feature = "inference")]
     pub fn turn(&mut self, user: &str) -> Result<TurnOutcome> {
-        self.turn_with_consent(user, &mut AllowLowRiskOnly)
+        let mut consent = AllowUpTo {
+            max: self.config.consent_ceiling,
+        };
+        self.turn_with_consent(user, &mut consent)
     }
 
     /// Same as [`Self::turn`] with an explicit consent policy.

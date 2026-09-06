@@ -7,6 +7,6 @@ mod consent;
 mod events;
 mod session;
 
-pub use consent::{AllowListedTools, AllowLowRiskOnly, ToolConsent, ToolRisk};
+pub use consent::{AllowListedTools, AllowLowRiskOnly, AllowUpTo, ToolConsent, ToolRisk};
 pub use events::{AgentEvent, ClarifyChoice, TurnOutcome};
 pub use session::{AgentError, AgentSession, AgentSessionConfig};
