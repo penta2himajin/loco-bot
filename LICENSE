@@ -8,3 +8,10 @@ Licensed under either of
    (see LICENSE-MIT or http://opensource.org/licenses/MIT)
 
 at your option.
+
+Third-party model weights downloaded for use with this software (for example
+Gemma 4 E4B and bekko-a8m) are subject to each provider’s own license terms,
+which are separate from the dual license above. See MODEL_LICENSES.md. That
+document may become outdated; verify current terms with each provider yourself.
+The authors accept no liability for reliance on outdated model-license
+information in this repository.

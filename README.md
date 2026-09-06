@@ -79,3 +79,7 @@ Licensed under either of
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
+
+**Model weights are separate.** Third-party model licenses (Gemma 4, bekko, …)
+apply in addition to this code license. See [`MODEL_LICENSES.md`](MODEL_LICENSES.md)
+(verify upstream terms yourself; that file may lag).
