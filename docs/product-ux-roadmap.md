@@ -25,8 +25,10 @@ Personas and phased surfaces for loco-bot. Engineering design stays in ADRs and 
 |-------|---------------|-------------|
 | **P7** | `claude/p7-…` | `loco-agent` library API + CLI/`loco serve` shells |
 | **P8** | `claude/p8-…` | Tool ladder: FS (sandbox + dry-run) → web/mail/drive stubs |
-| **P9** | `claude/p9-…` | Android companion hosting the runtime |
-| **P10** | `claude/p10-…` | Glasses as thin client to phone runtime |
+| **P9** | `claude/p9-…` | Android companion **policy** ([`android-companion.md`](android-companion.md)); app lives outside this repo |
+| **P10** | `claude/p10-…` | Glasses thin-client **policy** ([`glasses-client.md`](glasses-client.md)); app lives outside this repo |
+
+Surface vs core boundary: [`surfaces.md`](surfaces.md).
 
 ## Agent API (in-process)
 
