@@ -14,6 +14,12 @@ pub enum ToolError {
     Unknown(String),
     #[error("missing argument `{0}`")]
     MissingArg(String),
+    #[error("path escapes sandbox: {0}")]
+    PathEscape(String),
+    #[error("fs root not configured")]
+    NoFsRoot,
+    #[error("not configured: {0}")]
+    NotConfigured(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
@@ -25,13 +31,24 @@ pub enum ToolError {
 pub struct ToolHost {
     notes_path: PathBuf,
     memory_path: PathBuf,
+    /// Optional sandbox root for fs_* tools. Relative tool paths resolve here.
+    fs_root: Option<PathBuf>,
 }
 
 impl ToolHost {
     pub fn new(notes_path: impl Into<PathBuf>, memory_path: impl Into<PathBuf>) -> Self {
+        Self::with_fs_root(notes_path, memory_path, None)
+    }
+
+    pub fn with_fs_root(
+        notes_path: impl Into<PathBuf>,
+        memory_path: impl Into<PathBuf>,
+        fs_root: Option<PathBuf>,
+    ) -> Self {
         Self {
             notes_path: notes_path.into(),
             memory_path: memory_path.into(),
+            fs_root,
         }
     }
 
@@ -41,6 +58,13 @@ impl ToolHost {
             "note_write" => self.note_write(args),
             "note_read" => self.note_read(args),
             "session_stats" => Ok(self.session_stats()),
+            "fs_list" => self.fs_list(args),
+            "fs_move" | "fs_rename" => self.fs_relocate(args),
+            "web_search" => Err(ToolError::NotConfigured(
+                "web_search provider (set LOCO_WEB_SEARCH later)".into(),
+            )),
+            "mail_list" => Err(ToolError::NotConfigured("mail OAuth not wired yet".into())),
+            "drive_list" => Err(ToolError::NotConfigured("drive OAuth not wired yet".into())),
             other => Err(ToolError::Unknown(other.to_string())),
         }
     }
@@ -106,6 +130,99 @@ impl ToolHost {
                 "empty": true,
             }),
         }
+    }
+
+    fn fs_list(&self, args: &Map<String, Value>) -> Result<Value, ToolError> {
+        let rel = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let dir = self.resolve_under_root(rel)?;
+        let mut entries = Vec::new();
+        for ent in fs::read_dir(&dir)? {
+            let ent = ent?;
+            let meta = ent.metadata()?;
+            entries.push(json!({
+                "name": ent.file_name().to_string_lossy(),
+                "is_dir": meta.is_dir(),
+                "bytes": if meta.is_file() { Some(meta.len()) } else { None },
+            }));
+        }
+        entries.sort_by(|a, b| {
+            a["name"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["name"].as_str().unwrap_or(""))
+        });
+        Ok(json!({
+            "path": rel,
+            "entries": entries,
+        }))
+    }
+
+    fn fs_relocate(&self, args: &Map<String, Value>) -> Result<Value, ToolError> {
+        let from = arg_str(args, "from")?;
+        let to = arg_str(args, "to")?;
+        let dry_run = args
+            .get("dry_run")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let src = self.resolve_under_root(from)?;
+        let dst = self.resolve_under_root(to)?;
+        if !src.exists() {
+            return Err(ToolError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{} not found", src.display()),
+            )));
+        }
+        if dry_run {
+            return Ok(json!({
+                "ok": true,
+                "dry_run": true,
+                "from": from,
+                "to": to,
+            }));
+        }
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&src, &dst)?;
+        Ok(json!({
+            "ok": true,
+            "dry_run": false,
+            "from": from,
+            "to": to,
+        }))
+    }
+
+    fn resolve_under_root(&self, relative: &str) -> Result<PathBuf, ToolError> {
+        use std::path::{Component, Path};
+
+        let root = self.fs_root.as_ref().ok_or(ToolError::NoFsRoot)?;
+        let root = root.canonicalize().map_err(ToolError::Io)?;
+        let rel = Path::new(relative);
+        if rel.is_absolute() {
+            return Err(ToolError::PathEscape(relative.to_string()));
+        }
+
+        let mut parts: Vec<std::ffi::OsString> = Vec::new();
+        for c in rel.components() {
+            match c {
+                Component::CurDir => {}
+                Component::Normal(s) => parts.push(s.to_owned()),
+                Component::ParentDir => {
+                    if parts.pop().is_none() {
+                        return Err(ToolError::PathEscape(relative.to_string()));
+                    }
+                }
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(ToolError::PathEscape(relative.to_string()));
+                }
+            }
+        }
+
+        let mut out = root.clone();
+        for p in &parts {
+            out.push(p);
+        }
+        Ok(out)
     }
 }
 
@@ -185,5 +302,97 @@ mod tests {
     fn civil_epoch_smoke() {
         let (y, m, d, h, mi, s) = civil_from_unix(0);
         assert_eq!((y, m, d, h, mi, s), (1970, 1, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn fs_list_stays_inside_root() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("sandbox");
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        fs::write(root.join("sub/b.txt"), b"b").unwrap();
+        let host = ToolHost::with_fs_root(
+            dir.path().join("n.json"),
+            dir.path().join("m.json"),
+            Some(root.clone()),
+        );
+        let mut args = Map::new();
+        args.insert("path".into(), json!("."));
+        let v = host.execute("fs_list", &args).unwrap();
+        let names = v["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"a.txt".into()));
+        assert!(names.contains(&"sub".into()));
+    }
+
+    #[test]
+    fn fs_rejects_escape_from_root() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("sandbox");
+        fs::create_dir_all(&root).unwrap();
+        let host = ToolHost::with_fs_root(
+            dir.path().join("n.json"),
+            dir.path().join("m.json"),
+            Some(root),
+        );
+        let mut args = Map::new();
+        args.insert("path".into(), json!("../outside"));
+        let err = host.execute("fs_list", &args).unwrap_err();
+        assert!(matches!(err, ToolError::PathEscape(_)));
+    }
+
+    #[test]
+    fn fs_move_dry_run_does_not_touch_disk() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("sandbox");
+        fs::create_dir_all(&root).unwrap();
+        let src = root.join("old.txt");
+        fs::write(&src, b"x").unwrap();
+        let host = ToolHost::with_fs_root(
+            dir.path().join("n.json"),
+            dir.path().join("m.json"),
+            Some(root.clone()),
+        );
+        let mut args = Map::new();
+        args.insert("from".into(), json!("old.txt"));
+        args.insert("to".into(), json!("new.txt"));
+        args.insert("dry_run".into(), json!(true));
+        let v = host.execute("fs_move", &args).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["dry_run"], true);
+        assert!(src.exists());
+        assert!(!root.join("new.txt").exists());
+    }
+
+    #[test]
+    fn fs_rename_moves_file() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("sandbox");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("old.txt"), b"x").unwrap();
+        let host = ToolHost::with_fs_root(
+            dir.path().join("n.json"),
+            dir.path().join("m.json"),
+            Some(root.clone()),
+        );
+        let mut args = Map::new();
+        args.insert("from".into(), json!("old.txt"));
+        args.insert("to".into(), json!("new.txt"));
+        let v = host.execute("fs_rename", &args).unwrap();
+        assert_eq!(v["ok"], true);
+        assert!(!root.join("old.txt").exists());
+        assert!(root.join("new.txt").exists());
+    }
+
+    #[test]
+    fn web_search_requires_provider() {
+        let dir = tempdir().unwrap();
+        let host = ToolHost::new(dir.path().join("n.json"), dir.path().join("m.json"));
+        let err = host.execute("web_search", &Map::new()).unwrap_err();
+        assert!(matches!(err, ToolError::NotConfigured(_)));
     }
 }

@@ -12,13 +12,14 @@ path = "src/main.rs"
 
 [features]
 default = ["inference", "embed"]
-inference = ["loco-engine/inference"]
-embed = ["loco-embed/ort"]
+inference = ["loco-engine/inference", "loco-agent/inference"]
+embed = ["loco-embed/ort", "loco-agent/embed"]
 
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
 hf-hub = { workspace = true }
+loco-agent = { workspace = true }
 loco-engine = { workspace = true }
 loco-memory = { workspace = true }
 loco-embed = { workspace = true }

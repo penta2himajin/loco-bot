@@ -19,7 +19,7 @@ pub use prompt::{user_message_json, with_session_notes};
 pub use status::{file_status, model_fully_ready, model_status, ModelStatus};
 pub use tools::{
     default_tools_json, extract_assistant_text, extract_tool_calls, tool_response_json, ToolCall,
-    ToolHost, MAX_TOOL_ROUNDS,
+    ToolConsentGate, ToolHost, MAX_TOOL_ROUNDS,
 };
 
 #[cfg(feature = "inference")]

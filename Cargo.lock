@@ -1303,12 +1303,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "loco-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "loco-embed",
+ "loco-engine",
+ "loco-memory",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "loco-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "hf-hub",
+ "loco-agent",
  "loco-embed",
  "loco-engine",
  "loco-memory",

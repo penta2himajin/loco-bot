@@ -172,6 +172,50 @@ impl ChatSession {
         Err(ChatError::ToolLoopExceeded(MAX_TOOL_ROUNDS))
     }
 
+    /// Agent loop with a consent gate before each tool execution.
+    pub fn reply_with_tools_consent<C>(
+        &mut self,
+        user_text: &str,
+        host: &ToolHost,
+        consent: &mut C,
+        mut on_tool: impl FnMut(&str, &serde_json::Map<String, serde_json::Value>, bool),
+    ) -> Result<String, ChatError>
+    where
+        C: crate::tools::ToolConsentGate,
+    {
+        let message_json = user_message_json(user_text);
+        let mut raw = self.conversation()?.send_message(&message_json)?;
+
+        for _ in 0..MAX_TOOL_ROUNDS {
+            let calls = extract_tool_calls(&raw);
+            if calls.is_empty() {
+                let text = extract_assistant_text(&raw);
+                if !text.is_empty() {
+                    return Ok(text);
+                }
+                let fallback = extract_text(&raw);
+                return Ok(fallback);
+            }
+
+            for call in &calls {
+                let allowed = consent.allow_tool(&call.name, &call.arguments);
+                on_tool(&call.name, &call.arguments, allowed);
+                let response = if allowed {
+                    match host.execute(&call.name, &call.arguments) {
+                        Ok(v) => v,
+                        Err(err) => json!({ "error": err.to_string() }),
+                    }
+                } else {
+                    json!({ "error": "tool denied by consent policy", "tool": call.name })
+                };
+                let tool_msg = tool_response_json(&call.name, &response, call.id.as_deref());
+                raw = self.conversation()?.send_message(&tool_msg)?;
+            }
+        }
+
+        Err(ChatError::ToolLoopExceeded(MAX_TOOL_ROUNDS))
+    }
+
     /// Stream to stdout (CLI helper).
     pub fn reply_to_stdout(&mut self, user_text: &str) -> Result<(), ChatError> {
         let mut printed = false;
