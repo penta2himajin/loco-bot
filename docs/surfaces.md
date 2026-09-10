@@ -10,6 +10,7 @@ not grow inside this repository.
 | Surface | Doc |
 |---------|-----|
 | Product phases P7–P10 | [`product-ux-roadmap.md`](product-ux-roadmap.md) |
+| macOS quick overlay (hotkey panel) | [`macos-overlay.md`](macos-overlay.md) |
 | Android companion (P9) | [`android-companion.md`](android-companion.md) |
 | Glasses thin client (P10) | [`glasses-client.md`](glasses-client.md) |
 

@@ -30,6 +30,8 @@ Personas and phased surfaces for loco-bot. Engineering design stays in ADRs and 
 
 Surface vs core boundary: [`surfaces.md`](surfaces.md).
 
+Laptop hotkey overlay (⌃⌘Space, Spotlight-like panel): [`macos-overlay.md`](macos-overlay.md) (SoT).
+
 ## Agent API (in-process)
 
 Surfaces call [`loco_agent::AgentSession`](../crates/loco-agent/src/lib.rs), not a public cloud API.
