@@ -429,12 +429,22 @@ fn cmd_chat(_layout: &CacheLayout, _launch: SessionLaunch, _prompt: Option<&str>
     bail!("chat requires the `inference` feature (LiteRT-LM)")
 }
 
-/// One JSON object per stdin line → one JSON `TurnOutcome` per stdout line.
+/// One JSON object per stdin line → one JSON serve response per stdout line.
+///
+/// Supports `configure` / `turn` / `tool_result`, plus legacy `{"user":…}` as a turn.
 #[cfg(feature = "inference")]
 fn cmd_serve(layout: &CacheLayout, launch: SessionLaunch) -> Result<()> {
+    use loco_agent::{
+        parse_serve_client_line, AgentTurnProgress, ServeClientMessage, ServeServerMessage,
+        TurnOutcome,
+    };
+
     let no_memory = launch.no_memory;
     let mut agent = open_agent(layout, launch)?;
-    eprintln!("serve: JSONL Agent API on stdin/stdout (one request object per line)");
+    eprintln!(
+        "serve: JSONL Agent API on stdin/stdout \
+         (ops: configure | turn | tool_result; legacy {{\"user\":…}} still works)"
+    );
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = line?;
@@ -442,22 +452,50 @@ fn cmd_serve(layout: &CacheLayout, launch: SessionLaunch) -> Result<()> {
         if line.is_empty() {
             continue;
         }
-        let req: serde_json::Value =
-            serde_json::from_str(line).context("parse serve request JSON")?;
-        let user = req
-            .get("user")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim();
-        if user.is_empty() {
-            continue;
-        }
-        let outcome = agent.turn(user).context("agent turn")?;
-        if !no_memory {
-            agent.memory.append(user, &outcome.reply_text);
-            agent.save_memory()?;
-        }
-        println!("{}", serde_json::to_string(&outcome)?);
+        let req = parse_serve_client_line(line).context("parse serve request JSON")?;
+        let message = match req {
+            ServeClientMessage::Configure { tools } => {
+                agent
+                    .configure_host_tools(tools)
+                    .context("configure host tools")?;
+                ServeServerMessage::done(TurnOutcome {
+                    events: vec![],
+                    reply_text: String::new(),
+                })
+            }
+            ServeClientMessage::Turn { user } => {
+                let user = user.trim();
+                if user.is_empty() {
+                    continue;
+                }
+                let progress = agent.turn_progress(user).context("agent turn")?;
+                if let AgentTurnProgress::Done(ref outcome) = progress {
+                    if !no_memory {
+                        agent.memory.append(user, &outcome.reply_text);
+                        agent.save_memory()?;
+                    }
+                }
+                progress.into_serve_message()
+            }
+            ServeClientMessage::ToolResult {
+                call_id,
+                ok,
+                content,
+            } => {
+                let memory_user = agent.pending_memory_user().unwrap_or("").to_string();
+                let progress = agent
+                    .resume_host_tool(&call_id, ok, content)
+                    .context("resume host tool")?;
+                if let AgentTurnProgress::Done(ref outcome) = progress {
+                    if !no_memory && !memory_user.is_empty() {
+                        agent.memory.append(&memory_user, &outcome.reply_text);
+                        agent.save_memory()?;
+                    }
+                }
+                progress.into_serve_message()
+            }
+        };
+        println!("{}", serde_json::to_string(&message)?);
         io::stdout().flush().ok();
     }
     Ok(())
@@ -569,7 +607,7 @@ fn log_events(events: &[AgentEvent]) {
             AgentEvent::ToolRequest { name, risk, .. } => {
                 eprintln!("[tool request: {name} risk={risk}]");
             }
-            AgentEvent::ToolResult { name, ok } => {
+            AgentEvent::ToolResult { name, ok, .. } => {
                 eprintln!("[tool result: {name} ok={ok}]");
             }
             AgentEvent::Clarify { .. }

@@ -38,10 +38,15 @@ pub enum AgentEvent {
         name: String,
         arguments: serde_json::Map<String, serde_json::Value>,
         risk: String,
+        /// Present when the surface must fulfill this call (`awaiting_tool`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
     },
     ToolResult {
         name: String,
         ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
     },
     /// Incremental model text (reserved; non-streaming turns may omit).
     Token {

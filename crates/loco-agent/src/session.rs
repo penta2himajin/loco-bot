@@ -1,7 +1,9 @@
 //! [`AgentSession`]: one turn of resolve → compile → chat → tools.
 
-use anyhow::{Context, Result};
-use loco_engine::{with_session_notes, ChatSession, ModelId, ToolHost, GEMMA4_E4B_IT};
+use std::collections::HashMap;
+
+use anyhow::{bail, Context, Result};
+use loco_engine::{with_session_notes, ChatSession, ModelId, ToolCall, ToolHost, GEMMA4_E4B_IT};
 use loco_memory::{
     compile, CompilerConfig, PendingCandidate, PendingClarification, SessionMemory, TopicSwitch,
 };
@@ -14,8 +16,12 @@ use loco_embed::{
     TopicS2, DEFAULT_AMBIGUITY_DELTA,
 };
 
+#[cfg(feature = "inference")]
+use loco_engine::{default_tools_json, ensure_tool_call_id, ToolsTurnProgress};
+
 use crate::consent::{AllowUpTo, ConsentBridge, ToolConsent, ToolRisk};
 use crate::events::{AgentEvent, ClarifyChoice, TurnOutcome};
+use crate::serve_protocol::{merge_tools_json, HostToolSpec, ServeServerMessage};
 
 #[derive(Debug, Error)]
 pub enum AgentError {
@@ -38,6 +44,36 @@ pub struct AgentSessionConfig {
     pub consent_ceiling: crate::consent::ToolRisk,
 }
 
+/// Progress of a serve/agent turn that may pause for host-executed tools.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AgentTurnProgress {
+    Done(TurnOutcome),
+    AwaitingHostTool {
+        call_id: String,
+        outcome: TurnOutcome,
+    },
+}
+
+impl AgentTurnProgress {
+    pub fn into_serve_message(self) -> ServeServerMessage {
+        match self {
+            Self::Done(outcome) => ServeServerMessage::done(outcome),
+            Self::AwaitingHostTool { call_id, outcome } => {
+                ServeServerMessage::awaiting_tool(call_id, outcome)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "inference")]
+struct PendingHostTool {
+    call: ToolCall,
+    queued: Vec<ToolCall>,
+    rounds_used: usize,
+    events: Vec<AgentEvent>,
+    memory_user: String,
+}
+
 /// Owns memory + optional embedder + chat session for surface-agnostic turns.
 pub struct AgentSession {
     pub memory: SessionMemory,
@@ -47,6 +83,12 @@ pub struct AgentSession {
     chat: ChatSession,
     #[cfg(feature = "inference")]
     tools: Option<ToolHost>,
+    #[cfg(feature = "inference")]
+    host_tools: HashMap<String, HostToolSpec>,
+    #[cfg(feature = "inference")]
+    call_seq: u64,
+    #[cfg(feature = "inference")]
+    pending_host: Option<PendingHostTool>,
     #[cfg(feature = "embed")]
     embedder: Option<BekkoEmbedder>,
 }
@@ -60,7 +102,7 @@ impl AgentSession {
         memory: SessionMemory,
         config: AgentSessionConfig,
     ) -> Result<Self> {
-        use loco_engine::{default_tools_json, model_fully_ready};
+        use loco_engine::model_fully_ready;
 
         let model_path = layout.model_path(&GEMMA4_E4B_IT);
         let memory_path = layout.memory_path();
@@ -108,6 +150,9 @@ impl AgentSession {
             config,
             chat,
             tools,
+            host_tools: HashMap::new(),
+            call_seq: 0,
+            pending_host: None,
             #[cfg(feature = "embed")]
             embedder,
         })
@@ -135,22 +180,66 @@ impl AgentSession {
         }
     }
 
+    /// Register surface-owned tools and rebuild the conversation tool list.
+    ///
+    /// Clears chat history (engine stays warm). Call at session start.
+    #[cfg(feature = "inference")]
+    pub fn configure_host_tools(&mut self, tools: Vec<HostToolSpec>) -> Result<()> {
+        if self.pending_host.is_some() {
+            bail!("cannot configure host tools while awaiting a tool_result");
+        }
+        self.host_tools = tools.into_iter().map(|t| (t.name.clone(), t)).collect();
+
+        if self.config.no_tools {
+            return Ok(());
+        }
+
+        let host: Vec<_> = self.host_tools.values().cloned().collect();
+        let merged = merge_tools_json(&default_tools_json(), &host).context("merge tools json")?;
+        let notes = if self.config.no_memory {
+            None
+        } else {
+            self.memory.system_preamble()
+        };
+        self.chat
+            .replace_conversation(notes.as_deref(), Some(&merged))
+            .context("rebuild conversation with host tools")?;
+        Ok(())
+    }
+
     /// Run one user turn; returns structured events for any UI shell.
+    ///
+    /// If host tools are configured and the model calls one, this returns
+    /// [`AgentTurnProgress::AwaitingHostTool`] instead of blocking.
     #[cfg(feature = "inference")]
     pub fn turn(&mut self, user: &str) -> Result<TurnOutcome> {
+        match self.turn_progress(user)? {
+            AgentTurnProgress::Done(o) => Ok(o),
+            AgentTurnProgress::AwaitingHostTool { call_id, .. } => {
+                bail!("host tool {call_id} requires tool_result (use serve protocol)")
+            }
+        }
+    }
+
+    /// Serve-oriented turn that may pause for host tools.
+    #[cfg(feature = "inference")]
+    pub fn turn_progress(&mut self, user: &str) -> Result<AgentTurnProgress> {
         let mut consent = AllowUpTo {
             max: self.config.consent_ceiling,
         };
-        self.turn_with_consent(user, &mut consent)
+        self.turn_progress_with_consent(user, &mut consent)
     }
 
-    /// Same as [`Self::turn`] with an explicit consent policy.
     #[cfg(feature = "inference")]
-    pub fn turn_with_consent(
+    pub fn turn_progress_with_consent(
         &mut self,
         user: &str,
         consent: &mut dyn ToolConsent,
-    ) -> Result<TurnOutcome> {
+    ) -> Result<AgentTurnProgress> {
+        if self.pending_host.is_some() {
+            bail!("awaiting tool_result for a previous host tool call");
+        }
+
         let mut events = Vec::new();
 
         let switch = if self.config.no_memory {
@@ -169,18 +258,18 @@ impl AgentSession {
                             events.push(AgentEvent::Done {
                                 text: question.clone(),
                             });
-                            return Ok(TurnOutcome {
+                            return Ok(AgentTurnProgress::Done(TurnOutcome {
                                 events,
                                 reply_text: question,
-                            });
+                            }));
                         }
                         ResolveApply::Ack(msg) => {
                             events.push(AgentEvent::Ack { text: msg.clone() });
                             events.push(AgentEvent::Done { text: msg.clone() });
-                            return Ok(TurnOutcome {
+                            return Ok(AgentTurnProgress::Done(TurnOutcome {
                                 events,
                                 reply_text: msg,
-                            });
+                            }));
                         }
                         ResolveApply::Switch(sw) => {
                             push_topic_event(&mut events, &sw);
@@ -219,35 +308,176 @@ impl AgentSession {
         };
 
         let payload = with_session_notes(compiled.as_deref(), user);
-        let reply = if let Some(host) = self.tools.as_ref() {
+        if let Some(host) = self.tools.as_ref() {
+            let host_names: std::collections::HashSet<String> =
+                self.host_tools.keys().cloned().collect();
             let mut bridge = ConsentBridge { inner: consent };
-            self.chat.reply_with_tools_consent(
+            let progress = self.chat.reply_with_tools_routed(
                 &payload,
                 host,
+                |name| host_names.contains(name),
                 &mut bridge,
                 |name, args, allowed| {
                     events.push(AgentEvent::ToolRequest {
                         name: name.to_string(),
                         arguments: args.clone(),
                         risk: ToolRisk::for_tool(name).as_str().to_string(),
+                        call_id: None,
                     });
                     events.push(AgentEvent::ToolResult {
                         name: name.to_string(),
                         ok: allowed,
+                        call_id: None,
                     });
                 },
-            )?
+            )?;
+            self.progress_from_tools(progress, events, user.to_string())
         } else {
-            self.chat.reply(&payload)?
+            let reply = self.chat.reply(&payload)?;
+            events.push(AgentEvent::Done {
+                text: reply.clone(),
+            });
+            Ok(AgentTurnProgress::Done(TurnOutcome {
+                events,
+                reply_text: reply,
+            }))
+        }
+    }
+
+    /// Fulfill a paused host tool call from the surface.
+    #[cfg(feature = "inference")]
+    pub fn resume_host_tool(
+        &mut self,
+        call_id: &str,
+        ok: bool,
+        content: serde_json::Value,
+    ) -> Result<AgentTurnProgress> {
+        let pending = self
+            .pending_host
+            .take()
+            .context("no host tool is awaiting a result")?;
+        let expected = pending.call.id.as_deref().unwrap_or("");
+        if expected != call_id {
+            // put back so the client can retry with the right id
+            let expected_owned = expected.to_string();
+            self.pending_host = Some(pending);
+            bail!("call_id mismatch: expected {expected_owned}, got {call_id}");
+        }
+
+        let mut events = pending.events;
+        events.push(AgentEvent::ToolResult {
+            name: pending.call.name.clone(),
+            ok,
+            call_id: Some(call_id.to_string()),
+        });
+
+        let response = if ok {
+            content
+        } else {
+            serde_json::json!({
+                "error": "tool denied or failed on host",
+                "tool": pending.call.name,
+                "detail": content,
+            })
         };
 
-        events.push(AgentEvent::Done {
-            text: reply.clone(),
-        });
-        Ok(TurnOutcome {
-            events,
-            reply_text: reply,
-        })
+        let Some(host) = self.tools.as_ref() else {
+            bail!("tools disabled");
+        };
+        let host_names: std::collections::HashSet<String> =
+            self.host_tools.keys().cloned().collect();
+        let mut consent = AllowUpTo {
+            max: self.config.consent_ceiling,
+        };
+        let mut bridge = ConsentBridge {
+            inner: &mut consent,
+        };
+        let progress = self.chat.resume_with_host_tool_result(
+            loco_engine::HostToolResume {
+                call: &pending.call,
+                response,
+                queued: pending.queued,
+                rounds_used: pending.rounds_used,
+            },
+            host,
+            |name| host_names.contains(name),
+            &mut bridge,
+            |name, args, allowed| {
+                events.push(AgentEvent::ToolRequest {
+                    name: name.to_string(),
+                    arguments: args.clone(),
+                    risk: ToolRisk::for_tool(name).as_str().to_string(),
+                    call_id: None,
+                });
+                events.push(AgentEvent::ToolResult {
+                    name: name.to_string(),
+                    ok: allowed,
+                    call_id: None,
+                });
+            },
+        )?;
+        self.progress_from_tools(progress, events, pending.memory_user)
+    }
+
+    #[cfg(feature = "inference")]
+    fn progress_from_tools(
+        &mut self,
+        progress: ToolsTurnProgress,
+        mut events: Vec<AgentEvent>,
+        memory_user: String,
+    ) -> Result<AgentTurnProgress> {
+        match progress {
+            ToolsTurnProgress::Done(reply) => {
+                events.push(AgentEvent::Done {
+                    text: reply.clone(),
+                });
+                Ok(AgentTurnProgress::Done(TurnOutcome {
+                    events,
+                    reply_text: reply,
+                }))
+            }
+            ToolsTurnProgress::NeedHostTool {
+                mut call,
+                queued,
+                rounds_used,
+            } => {
+                self.call_seq += 1;
+                let fallback = format!("host-{}", self.call_seq);
+                ensure_tool_call_id(&mut call, fallback);
+                let call_id = call.id.clone().unwrap_or_default();
+                let risk = self
+                    .host_tools
+                    .get(&call.name)
+                    .map(|s| s.risk.clone())
+                    .unwrap_or_else(|| ToolRisk::for_tool(&call.name).as_str().to_string());
+                events.push(AgentEvent::ToolRequest {
+                    name: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                    risk,
+                    call_id: Some(call_id.clone()),
+                });
+                self.pending_host = Some(PendingHostTool {
+                    call,
+                    queued,
+                    rounds_used,
+                    events: events.clone(),
+                    memory_user,
+                });
+                Ok(AgentTurnProgress::AwaitingHostTool {
+                    call_id,
+                    outcome: TurnOutcome {
+                        events,
+                        reply_text: String::new(),
+                    },
+                })
+            }
+        }
+    }
+
+    /// Last user text for a paused host tool (for memory append on Done).
+    #[cfg(feature = "inference")]
+    pub fn pending_memory_user(&self) -> Option<&str> {
+        self.pending_host.as_ref().map(|p| p.memory_user.as_str())
     }
 
     pub fn save_memory(&self) -> Result<()> {

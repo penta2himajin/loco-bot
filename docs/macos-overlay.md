@@ -92,8 +92,23 @@ how to change it. Japanese IME / input-source shortcuts often sit near
 
 ### Turn contract
 
-Overlay sends user text; runtime returns the same event model as
-`loco_agent::AgentEvent` / `TurnOutcome`:
+JSONL on `loco serve` stdin/stdout. Legacy one-shot `{"user":"…"}` still works
+and returns a completed turn (with `status":"done"` once the serve protocol is
+used; plain `TurnOutcome` fields remain on the wire via flatten).
+
+Host-executed (surface-owned) tools:
+
+1. Overlay → `{"op":"configure","tools":[…]}` (OpenAI-style schemas, `exec":"host"`).
+2. Overlay → `{"op":"turn","user":"…"}` (or legacy `{"user":"…"}`).
+3. If the model calls a host tool, serve responds with
+   `{"status":"awaiting_tool","call_id":"…","events":[…],"reply_text":""}` and
+   **pauses** the tool loop.
+4. Overlay runs the tool (after allow/deny for medium/high) →
+   `{"op":"tool_result","call_id":"…","ok":true,"content":{…}}`.
+5. Serve continues until `{"status":"done",…}`.
+
+Portable tools (`get_current_time`, notes, `fs_*`, …) stay `exec: local` inside
+loco-bot. Event stream shape remains:
 
 `Clarify` → `Ack` / `Topic` → `Context` → `ToolRequest` / `ToolResult` →
 `Token`* → `Done`

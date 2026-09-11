@@ -5,8 +5,13 @@
 
 mod consent;
 mod events;
+mod serve_protocol;
 mod session;
 
 pub use consent::{AllowListedTools, AllowLowRiskOnly, AllowUpTo, ToolConsent, ToolRisk};
 pub use events::{AgentEvent, ClarifyChoice, TurnOutcome};
-pub use session::{AgentError, AgentSession, AgentSessionConfig};
+pub use serve_protocol::{
+    merge_tools_json, parse_serve_client_line, HostToolSpec, ServeClientMessage,
+    ServeServerMessage, ToolExecKind,
+};
+pub use session::{AgentError, AgentSession, AgentSessionConfig, AgentTurnProgress};
