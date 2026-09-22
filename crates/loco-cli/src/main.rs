@@ -53,7 +53,7 @@ enum Commands {
         /// Model id (default: gemma4-e4b).
         #[arg(long, default_value = "gemma4-e4b")]
         model: String,
-        /// Inference backend: cpu or gpu (metal maps to gpu).
+        /// Inference backend: cpu, gpu (metal), or external (LOCO_INFERENCE_COMMAND).
         #[arg(long, default_value = "cpu")]
         backend: String,
         /// Do not load/save session memory.
@@ -76,7 +76,7 @@ enum Commands {
     },
     /// JSONL Agent API over stdio (laptop / thin UI shells).
     Serve {
-        /// Inference backend: cpu or gpu (metal maps to gpu).
+        /// Inference backend: cpu, gpu (metal), or external (LOCO_INFERENCE_COMMAND).
         #[arg(long, default_value = "cpu")]
         backend: String,
         /// Do not load/save session memory.
@@ -522,17 +522,19 @@ fn open_agent(layout: &CacheLayout, launch: SessionLaunch) -> Result<AgentSessio
         bail!("chat currently supports only gemma4-e4b (got {id})");
     }
     let backend = InferenceBackend::parse(&backend)?;
-    match model_status(layout, id) {
-        ModelStatus::Present { bytes, .. } if bytes > 0 => {}
-        ModelStatus::Missing { expected } => {
-            bail!(
-                "model not ready at {}. Run: loco download {}",
-                expected.display(),
-                id
-            );
-        }
-        ModelStatus::Present { path, .. } => {
-            bail!("model file is empty: {}", path.display());
+    if backend != InferenceBackend::External {
+        match model_status(layout, id) {
+            ModelStatus::Present { bytes, .. } if bytes > 0 => {}
+            ModelStatus::Missing { expected } => {
+                bail!(
+                    "model not ready at {}. Run: loco download {}",
+                    expected.display(),
+                    id
+                );
+            }
+            ModelStatus::Present { path, .. } => {
+                bail!("model file is empty: {}", path.display());
+            }
         }
     }
 
@@ -544,7 +546,11 @@ fn open_agent(layout: &CacheLayout, launch: SessionLaunch) -> Result<AgentSessio
 
     eprintln!(
         "loading {} ({backend}) …",
-        ModelSpec::for_id(id).display_name
+        if backend == InferenceBackend::External {
+            "external inference command"
+        } else {
+            ModelSpec::for_id(id).display_name
+        }
     );
     if !no_memory {
         if let Some(p) = memory.system_preamble() {

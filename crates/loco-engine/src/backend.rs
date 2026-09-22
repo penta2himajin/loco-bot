@@ -1,4 +1,4 @@
-//! Inference backend selection for LiteRT-LM.
+//! Inference selection: LiteRT-LM CPU/GPU or a platform-owned external adapter.
 
 use std::fmt;
 use thiserror::Error;
@@ -7,15 +7,17 @@ use thiserror::Error;
 pub enum InferenceBackend {
     Cpu,
     Gpu,
+    External,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-#[error("unknown inference backend: {0} (expected cpu or gpu)")]
+#[error("unknown inference backend: {0} (expected cpu, gpu, or external)")]
 pub struct BackendParseError(String);
 
 impl InferenceBackend {
     pub fn parse(s: &str) -> Result<Self, BackendParseError> {
         match s.trim().to_ascii_lowercase().as_str() {
+            "external" => Ok(Self::External),
             "cpu" => Ok(Self::Cpu),
             "gpu" | "metal" => Ok(Self::Gpu),
             other => Err(BackendParseError(other.to_string())),
@@ -24,6 +26,7 @@ impl InferenceBackend {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::External => "external",
             Self::Cpu => "cpu",
             Self::Gpu => "gpu",
         }
@@ -54,6 +57,11 @@ mod tests {
             InferenceBackend::parse("metal").unwrap(),
             InferenceBackend::Gpu
         );
+        assert_eq!(
+            InferenceBackend::parse(" EXTERNAL ").unwrap(),
+            InferenceBackend::External
+        );
+        assert_eq!(InferenceBackend::External.as_str(), "external");
         assert!(InferenceBackend::parse("npu").is_err());
     }
 }

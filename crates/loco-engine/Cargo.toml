@@ -18,5 +18,4 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 litertlm-rs = { workspace = true, optional = true }
 
-[dev-dependencies]
 tempfile = { workspace = true }

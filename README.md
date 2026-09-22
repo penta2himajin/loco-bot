@@ -83,3 +83,11 @@ at your option.
 **Model weights are separate.** Third-party model licenses (Gemma 4, bekko, …)
 apply in addition to this code license. See [`MODEL_LICENSES.md`](MODEL_LICENSES.md)
 (verify upstream terms yourself; that file may lag).
+
+
+## External inference adapters
+
+Set `LOCO_INFERENCE_COMMAND` to an adapter executable and select `--backend external`
+for `loco chat` or `loco serve`. Memory, topic context, and tool control remain in
+loco-bot; model-specific integration stays in the owning platform repository.
+See [the versioned JSON contract](docs/external-inference.md).

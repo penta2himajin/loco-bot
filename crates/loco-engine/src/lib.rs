@@ -24,3 +24,6 @@ pub use tools::{
 
 #[cfg(feature = "inference")]
 pub use chat::{ensure_tool_call_id, ChatError, ChatSession, HostToolResume, ToolsTurnProgress};
+
+#[cfg(feature = "inference")]
+mod external;
