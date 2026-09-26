@@ -34,13 +34,16 @@ retain their argument/path/URL validation and consent rules. The runtime assigns
 host call IDs and produces `TurnOutcome` / `AgentEvent`; adapters must not invent
 execution outcomes or permission decisions.
 
-The runtime keeps up to 10 whole user-turn groups, including assistant messages
-and tool exchanges. Messages may contain assistant `tool_calls`, and tool results
-use `{"role":"tool","content":[{"name":"...","response":{...}}]}` with an optional
-`tool_call_id`. Session/topic notes are compiled by the existing agent and attached
-to user messages. Persisted memory is unaffected by the request history cap.
+Each request replays only the current user-turn group: the user message, any
+assistant `tool_calls`, and tool results for this generation. Tool results use
+`{"role":"tool","content":[{"name":"...","response":{...}}]}` with an optional
+`tool_call_id`. Earlier turns stay in persisted session memory. The agent compiles
+them into the current user message (summary, active topic, a short recent window,
+and on topic return the returned chunk). LiteRT keeps that recent window in its
+own conversation instead, so CPU/GPU requests omit the recent-turn dump.
 Adapters apply their model's token budget and can omit older whole groups, but
 must keep the current user/tool exchange intact or report an oversized-input error.
+A fixed turn count is not part of this protocol.
 
 The macOS Foundation Models adapter belongs to **loco-macos**. `fm` commands,
 schemas, token counting, and OS availability are not implemented in this repository.
