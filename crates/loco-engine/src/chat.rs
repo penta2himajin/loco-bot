@@ -67,6 +67,9 @@ pub struct ChatSession {
     external: Option<crate::external::ExternalSession>,
     system_text: Option<String>,
     tools_json: Option<String>,
+    /// LiteRT only. Set for a topic New/Return so the next user turn prefills
+    /// from compiled notes. Continue leaves this false and reuses the KV cache.
+    rebuild_before_user_turn: bool,
 }
 
 impl Drop for ChatSession {
@@ -98,6 +101,7 @@ impl ChatSession {
                 )?),
                 system_text: None,
                 tools_json: None,
+                rebuild_before_user_turn: false,
             });
         }
         let path = model_path.as_ref();
@@ -121,6 +125,7 @@ impl ChatSession {
             external: None,
             system_text: None,
             tools_json: None,
+            rebuild_before_user_turn: false,
         };
         session.replace_conversation(system_text, tools_json)?;
         Ok(session)
@@ -173,14 +178,18 @@ impl ChatSession {
             .ok_or_else(|| ChatError::LiteRt("conversation already closed".into()))
     }
 
-    /// Drop prior LiteRT turns. Session memory supplies earlier context.
-    /// A host-tool resume keeps the conversation opened for this user turn.
+    /// Ask the next LiteRT user turn to drop the conversation and prefill again.
+    /// External sessions ignore this. Host-tool resume does not consult it.
+    pub fn set_rebuild_before_user_turn(&mut self, rebuild: bool) {
+        self.rebuild_before_user_turn = rebuild;
+    }
+
+    /// Rebuild only when the caller marked this user turn as a new prefix.
+    /// Continue reuses the KV cache. A host-tool resume does not call this.
     fn begin_user_turn(&mut self) -> Result<(), ChatError> {
-        let backend = match self.external {
-            Some(_) => InferenceBackend::External,
-            None => InferenceBackend::Cpu,
-        };
-        if keeps_conversation_across_user_turns(backend) {
+        let rebuild = self.rebuild_before_user_turn;
+        self.rebuild_before_user_turn = false;
+        if self.external.is_some() || !rebuild {
             return Ok(());
         }
         let system = self.system_text.clone();
@@ -406,11 +415,6 @@ fn nonempty_owned(text: Option<&str>) -> Option<String> {
     text.filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
-/// External sessions trim their own one-turn buffer. LiteRT is rebuilt instead.
-fn keeps_conversation_across_user_turns(backend: InferenceBackend) -> bool {
-    matches!(backend, InferenceBackend::External)
-}
-
 /// Ensure every tool call has an id (surfaces need stable `call_id`s).
 pub fn ensure_tool_call_id(call: &mut ToolCall, fallback: impl Into<String>) {
     if call.id.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
@@ -424,20 +428,42 @@ mod tests {
     use crate::backend::InferenceBackend;
 
     #[test]
-    fn reply_rebuilds_litert_conversation_before_sending() {
+    fn continue_keeps_the_litert_conversation() {
         let mut session = ChatSession {
             conversation: None,
             engine: None,
             external: None,
             system_text: Some("preamble".into()),
             tools_json: Some("[]".into()),
+            rebuild_before_user_turn: false,
         };
+        let err = session.reply("hello").unwrap_err();
+        assert!(
+            err.to_string().contains("conversation already closed"),
+            "{err}"
+        );
+        assert_eq!(session.system_text.as_deref(), Some("preamble"));
+        assert_eq!(session.tools_json.as_deref(), Some("[]"));
+    }
+
+    #[test]
+    fn topic_reset_rebuilds_the_litert_conversation() {
+        let mut session = ChatSession {
+            conversation: None,
+            engine: None,
+            external: None,
+            system_text: Some("preamble".into()),
+            tools_json: Some("[]".into()),
+            rebuild_before_user_turn: false,
+        };
+        session.set_rebuild_before_user_turn(true);
         let err = session.reply("hello").unwrap_err();
         assert!(err.to_string().contains("engine already closed"), "{err}");
         assert_eq!(session.system_text.as_deref(), Some("preamble"));
         assert_eq!(session.tools_json.as_deref(), Some("[]"));
 
         let host = ToolHost::new("/tmp/notes", "/tmp/memory");
+        session.set_rebuild_before_user_turn(true);
         let err = session.reply_with_tools("hello", &host).unwrap_err();
         assert!(err.to_string().contains("engine already closed"), "{err}");
 
@@ -446,6 +472,7 @@ mod tests {
             arguments: Default::default(),
             id: None,
         };
+        session.set_rebuild_before_user_turn(true);
         let err = session
             .resume_with_host_tool_result(
                 HostToolResume {
@@ -464,15 +491,6 @@ mod tests {
             err.to_string().contains("conversation already closed"),
             "{err}"
         );
-    }
-
-    #[test]
-    fn litert_user_turns_do_not_keep_the_conversation() {
-        assert!(!keeps_conversation_across_user_turns(InferenceBackend::Cpu));
-        assert!(!keeps_conversation_across_user_turns(InferenceBackend::Gpu));
-        assert!(keeps_conversation_across_user_turns(
-            InferenceBackend::External
-        ));
     }
 
     #[test]

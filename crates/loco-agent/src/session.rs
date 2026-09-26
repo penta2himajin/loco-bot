@@ -289,6 +289,8 @@ impl AgentSession {
             }
         };
 
+        self.chat
+            .set_rebuild_before_user_turn(rebuild_litert_prefix(self.backend, switch));
         let cfg = context_compiler_config(self.backend, switch);
         let compiled = if self.config.no_memory {
             None
@@ -488,14 +490,34 @@ impl AgentSession {
     }
 }
 
-/// Both backends receive the same compiled window. Neither keeps prior turns
-/// in the inference conversation.
+/// External prompts always include the recent window. LiteRT includes that
+/// window only on topic return, after the conversation has been rebuilt.
+/// Continue reuses the KV cache and does not repeat those turns. New drops the
+/// cache and starts from the summary and active topic, without pasting the
+/// previous topic's verbatim turns back in.
 #[cfg(feature = "inference")]
 fn context_compiler_config(
-    _backend: loco_engine::InferenceBackend,
-    _switch: TopicSwitch,
+    backend: loco_engine::InferenceBackend,
+    switch: TopicSwitch,
 ) -> CompilerConfig {
-    CompilerConfig::default()
+    let omit_recent_window = !matches!(backend, loco_engine::InferenceBackend::External)
+        && !matches!(switch, TopicSwitch::Return { .. });
+    if omit_recent_window {
+        CompilerConfig {
+            recent_turn_window: 0,
+            ..CompilerConfig::default()
+        }
+    } else {
+        CompilerConfig::default()
+    }
+}
+
+/// Drop the LiteRT conversation when the next prompt is not an append.
+/// Continue reuses the KV cache. External trims its own one-turn buffer.
+#[cfg(feature = "inference")]
+fn rebuild_litert_prefix(backend: loco_engine::InferenceBackend, switch: TopicSwitch) -> bool {
+    !matches!(backend, loco_engine::InferenceBackend::External)
+        && matches!(switch, TopicSwitch::New | TopicSwitch::Return { .. })
 }
 
 fn push_topic_event(events: &mut Vec<AgentEvent>, switch: &TopicSwitch) {
@@ -673,23 +695,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_backend_includes_recent_turns() {
-        let window = CompilerConfig::default().recent_turn_window;
-        for backend in [
-            loco_engine::InferenceBackend::External,
-            loco_engine::InferenceBackend::Cpu,
-            loco_engine::InferenceBackend::Gpu,
+    fn litert_reuses_kv_on_continue_and_rebuilds_when_the_prefix_changes() {
+        use loco_engine::InferenceBackend::{Cpu, External, Gpu};
+        for backend in [Cpu, Gpu] {
+            assert!(!rebuild_litert_prefix(backend, TopicSwitch::Continue));
+            assert!(rebuild_litert_prefix(backend, TopicSwitch::New));
+            assert!(rebuild_litert_prefix(
+                backend,
+                TopicSwitch::Return { chunk_index: 1 }
+            ));
+            assert_eq!(
+                context_compiler_config(backend, TopicSwitch::Continue).recent_turn_window,
+                0
+            );
+            assert_eq!(
+                context_compiler_config(backend, TopicSwitch::New).recent_turn_window,
+                0
+            );
+            assert_eq!(
+                context_compiler_config(backend, TopicSwitch::Return { chunk_index: 1 })
+                    .recent_turn_window,
+                CompilerConfig::default().recent_turn_window
+            );
+        }
+        for switch in [
+            TopicSwitch::Continue,
+            TopicSwitch::New,
+            TopicSwitch::Return { chunk_index: 1 },
         ] {
-            for switch in [
-                TopicSwitch::Continue,
-                TopicSwitch::New,
-                TopicSwitch::Return { chunk_index: 1 },
-            ] {
-                assert_eq!(
-                    context_compiler_config(backend, switch).recent_turn_window,
-                    window
-                );
-            }
+            assert!(!rebuild_litert_prefix(External, switch));
+            assert_eq!(
+                context_compiler_config(External, switch).recent_turn_window,
+                CompilerConfig::default().recent_turn_window
+            );
         }
     }
 }
