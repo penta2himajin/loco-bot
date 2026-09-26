@@ -80,6 +80,8 @@ pub struct AgentSession {
     pub memory_path: std::path::PathBuf,
     config: AgentSessionConfig,
     #[cfg(feature = "inference")]
+    backend: loco_engine::InferenceBackend,
+    #[cfg(feature = "inference")]
     chat: ChatSession,
     #[cfg(feature = "inference")]
     tools: Option<ToolHost>,
@@ -148,6 +150,7 @@ impl AgentSession {
             memory,
             memory_path,
             config,
+            backend,
             chat,
             tools,
             host_tools: HashMap::new(),
@@ -286,13 +289,7 @@ impl AgentSession {
             }
         };
 
-        let cfg = match switch {
-            TopicSwitch::Return { .. } => CompilerConfig::default(),
-            TopicSwitch::Continue | TopicSwitch::New => CompilerConfig {
-                recent_turn_window: 0,
-                ..CompilerConfig::default()
-            },
-        };
+        let cfg = context_compiler_config(self.backend, switch);
         let compiled = if self.config.no_memory {
             None
         } else {
@@ -491,6 +488,23 @@ impl AgentSession {
     }
 }
 
+/// Recent verbatim turns are included unless the engine conversation already holds them.
+#[cfg(feature = "inference")]
+fn context_compiler_config(
+    backend: loco_engine::InferenceBackend,
+    switch: TopicSwitch,
+) -> CompilerConfig {
+    let engine_holds_turns = !matches!(backend, loco_engine::InferenceBackend::External);
+    if engine_holds_turns && !matches!(switch, TopicSwitch::Return { .. }) {
+        CompilerConfig {
+            recent_turn_window: 0,
+            ..CompilerConfig::default()
+        }
+    } else {
+        CompilerConfig::default()
+    }
+}
+
 fn push_topic_event(events: &mut Vec<AgentEvent>, switch: &TopicSwitch) {
     let (kind, chunk_index) = match switch {
         TopicSwitch::Continue => ("continue", None),
@@ -658,5 +672,81 @@ fn pending_to_clarification(p: &PendingClarification) -> Clarification {
                 },
             })
             .collect(),
+    }
+}
+
+#[cfg(all(test, feature = "inference"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_continue_includes_recent_turns_litert_does_not() {
+        let external = context_compiler_config(
+            loco_engine::InferenceBackend::External,
+            TopicSwitch::Continue,
+        );
+        assert_eq!(
+            external.recent_turn_window,
+            CompilerConfig::default().recent_turn_window
+        );
+        let cpu =
+            context_compiler_config(loco_engine::InferenceBackend::Cpu, TopicSwitch::Continue);
+        assert_eq!(cpu.recent_turn_window, 0);
+        let returned = context_compiler_config(
+            loco_engine::InferenceBackend::Gpu,
+            TopicSwitch::Return { chunk_index: 1 },
+        );
+        assert_eq!(
+            returned.recent_turn_window,
+            CompilerConfig::default().recent_turn_window
+        );
+    }
+}
+
+#[cfg(all(test, feature = "inference", unix))]
+mod external_turn_tests {
+    use super::*;
+    use loco_engine::{CacheLayout, InferenceBackend};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn external_turn_sends_compiled_recent_turns_without_prior_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("adapter");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncat > \"$0.request\"\necho '{\"content\":\"hello\"}'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // SAFETY: the adapter child is spawned after this write, and this test owns the variable.
+        unsafe { std::env::set_var("LOCO_INFERENCE_COMMAND", &program) };
+        let layout = CacheLayout::new(dir.path().join("cache"));
+        let mut agent = AgentSession::open(
+            &layout,
+            InferenceBackend::External,
+            SessionMemory::default(),
+            AgentSessionConfig {
+                no_tools: true,
+                no_topic: true,
+                ..AgentSessionConfig::default()
+            },
+        )
+        .unwrap();
+        let first = agent.turn("first question").unwrap();
+        assert_eq!(first.reply_text, "hello");
+        agent.memory.append("first question", &first.reply_text);
+        let second = agent.turn("second question").unwrap();
+        assert_eq!(second.reply_text, "hello");
+        let request: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(program.with_extension("request")).unwrap())
+                .unwrap();
+        let messages = request["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        let content = messages[0]["content"].as_str().unwrap();
+        assert!(content.contains("Recent turns:"));
+        assert!(content.contains("first question"));
+        assert!(content.contains("Current user message:\nsecond question"));
     }
 }

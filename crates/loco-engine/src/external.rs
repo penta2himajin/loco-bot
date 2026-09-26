@@ -85,8 +85,9 @@ impl ExternalSession {
                 .push(message),
             _ => return Err(error("expected user message or tool result")),
         }
-        // ponytail: last 10 user turns; adapters apply their model's finer token budget.
-        while history.len() > 10 {
+        // Cross-turn context is compiled into the current user message.
+        // This buffer is only the in-flight exchange. Adapters trim by token budget.
+        while history.len() > 1 {
             history.remove(0);
         }
         let messages: Vec<_> = history.iter().flatten().collect();
@@ -194,7 +195,7 @@ cat "$0.response"
     }
 
     #[test]
-    fn external_schema_response_and_recent_ten_turns() {
+    fn external_schema_response_replays_only_the_current_turn() {
         let (dir, mut session) = fixture();
         for n in 0..12 {
             let raw = session
@@ -202,13 +203,16 @@ cat "$0.response"
                 .unwrap();
             assert_eq!(crate::extract_assistant_text(&raw), "hello");
         }
-        assert_eq!(session.history.len(), 10);
+        assert_eq!(session.history.len(), 1);
+        assert_eq!(session.history[0].len(), 2);
         let request: Value =
             serde_json::from_slice(&std::fs::read(dir.path().join("adapter.request")).unwrap())
                 .unwrap();
+        let messages = request["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
         assert_eq!(request["version"], 1);
         assert_eq!(request["system"], "session background");
-        assert_eq!(request["messages"][0]["content"], "turn-2");
+        assert_eq!(messages[0]["content"], "turn-11");
         assert_eq!(request["tools"][0]["function"]["name"], "get_current_time");
     }
 
