@@ -149,7 +149,8 @@ impl SessionMemory {
     /// resident-only snapshot (Continue switch).
     pub fn system_preamble(&self) -> Option<String> {
         let cfg = crate::CompilerConfig {
-            // Cold-start preamble: summary + topic only (Conversation will see live turns).
+            // Cold-start system message: summary + topic only.
+            // Per-turn notes from `compile` carry the recent window.
             recent_turn_window: 0,
             ..crate::CompilerConfig::default()
         };
