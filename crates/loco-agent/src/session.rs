@@ -488,21 +488,14 @@ impl AgentSession {
     }
 }
 
-/// Recent verbatim turns are included unless the engine conversation already holds them.
+/// Both backends receive the same compiled window. Neither keeps prior turns
+/// in the inference conversation.
 #[cfg(feature = "inference")]
 fn context_compiler_config(
-    backend: loco_engine::InferenceBackend,
-    switch: TopicSwitch,
+    _backend: loco_engine::InferenceBackend,
+    _switch: TopicSwitch,
 ) -> CompilerConfig {
-    let engine_holds_turns = !matches!(backend, loco_engine::InferenceBackend::External);
-    if engine_holds_turns && !matches!(switch, TopicSwitch::Return { .. }) {
-        CompilerConfig {
-            recent_turn_window: 0,
-            ..CompilerConfig::default()
-        }
-    } else {
-        CompilerConfig::default()
-    }
+    CompilerConfig::default()
 }
 
 fn push_topic_event(events: &mut Vec<AgentEvent>, switch: &TopicSwitch) {
@@ -680,26 +673,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn external_continue_includes_recent_turns_litert_does_not() {
-        let external = context_compiler_config(
+    fn every_backend_includes_recent_turns() {
+        let window = CompilerConfig::default().recent_turn_window;
+        for backend in [
             loco_engine::InferenceBackend::External,
-            TopicSwitch::Continue,
-        );
-        assert_eq!(
-            external.recent_turn_window,
-            CompilerConfig::default().recent_turn_window
-        );
-        let cpu =
-            context_compiler_config(loco_engine::InferenceBackend::Cpu, TopicSwitch::Continue);
-        assert_eq!(cpu.recent_turn_window, 0);
-        let returned = context_compiler_config(
+            loco_engine::InferenceBackend::Cpu,
             loco_engine::InferenceBackend::Gpu,
-            TopicSwitch::Return { chunk_index: 1 },
-        );
-        assert_eq!(
-            returned.recent_turn_window,
-            CompilerConfig::default().recent_turn_window
-        );
+        ] {
+            for switch in [
+                TopicSwitch::Continue,
+                TopicSwitch::New,
+                TopicSwitch::Return { chunk_index: 1 },
+            ] {
+                assert_eq!(
+                    context_compiler_config(backend, switch).recent_turn_window,
+                    window
+                );
+            }
+        }
     }
 }
 

@@ -39,8 +39,9 @@ assistant `tool_calls`, and tool results for this generation. Tool results use
 `{"role":"tool","content":[{"name":"...","response":{...}}]}` with an optional
 `tool_call_id`. Earlier turns stay in persisted session memory. The agent compiles
 them into the current user message (summary, active topic, a short recent window,
-and on topic return the returned chunk). LiteRT keeps that recent window in its
-own conversation instead, so CPU/GPU requests omit the recent-turn dump.
+and on topic return the returned chunk). LiteRT rebuilds its conversation at
+each user turn, so CPU/GPU requests include that same window and do not keep
+prior turns in the engine conversation.
 Adapters apply their model's token budget and can omit older whole groups, but
 must keep the current user/tool exchange intact or report an oversized-input error.
 A fixed turn count is not part of this protocol.
