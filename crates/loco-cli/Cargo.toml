@@ -24,3 +24,6 @@ loco-engine = { workspace = true }
 loco-memory = { workspace = true }
 loco-embed = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

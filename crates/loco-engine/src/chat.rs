@@ -21,6 +21,8 @@ use crate::tools::{
 pub enum ChatError {
     #[error("model file not found: {0}")]
     ModelMissing(String),
+    #[error("external inference: {0}")]
+    External(String),
     #[error("liteRT-LM error: {0}")]
     LiteRt(String),
     #[error("tool loop exceeded {0} rounds")]
@@ -62,6 +64,7 @@ pub struct ChatSession {
     // Drop conversation before engine to avoid LiteRT teardown warnings.
     conversation: Option<litertlm_rs::Conversation>,
     engine: Option<Engine>,
+    external: Option<crate::external::ExternalSession>,
 }
 
 impl Drop for ChatSession {
@@ -83,6 +86,16 @@ impl ChatSession {
         system_text: Option<&str>,
         tools_json: Option<&str>,
     ) -> Result<Self, ChatError> {
+        if backend == InferenceBackend::External {
+            return Ok(Self {
+                conversation: None,
+                engine: None,
+                external: Some(crate::external::ExternalSession::open(
+                    system_text,
+                    tools_json,
+                )?),
+            });
+        }
         let path = model_path.as_ref();
         if !path.is_file() {
             return Err(ChatError::ModelMissing(path.display().to_string()));
@@ -101,6 +114,7 @@ impl ChatSession {
         let mut session = Self {
             conversation: None,
             engine: Some(engine),
+            external: None,
         };
         session.replace_conversation(system_text, tools_json)?;
         Ok(session)
@@ -113,6 +127,9 @@ impl ChatSession {
         system_text: Option<&str>,
         tools_json: Option<&str>,
     ) -> Result<(), ChatError> {
+        if let Some(external) = self.external.as_mut() {
+            return external.replace_conversation(system_text, tools_json);
+        }
         self.conversation.take();
         let engine = self
             .engine
@@ -148,12 +165,25 @@ impl ChatSession {
             .ok_or_else(|| ChatError::LiteRt("conversation already closed".into()))
     }
 
+    fn send_message(&mut self, message: &str) -> Result<String, ChatError> {
+        match self.external.as_mut() {
+            Some(external) => external.send_message(message),
+            None => Ok(self.conversation()?.send_message(message)?),
+        }
+    }
+
     /// Stream a reply for one user turn; `on_text` receives decoded text deltas.
     pub fn reply_stream<F>(&mut self, user_text: &str, mut on_text: F) -> Result<(), ChatError>
     where
         F: FnMut(&str),
     {
         let message_json = user_message_json(user_text);
+        if let Some(external) = self.external.as_mut() {
+            // Structured external output is validated in full before exposing its content.
+            let raw = external.send_message(&message_json)?;
+            on_text(&extract_assistant_text(&raw));
+            return Ok(());
+        }
         self.conversation()?
             .send_message_stream(&message_json, |chunk| {
                 if let Some(err) = chunk.error() {
@@ -232,7 +262,7 @@ impl ChatSession {
         H: Fn(&str) -> bool,
     {
         let message_json = user_message_json(user_text);
-        let raw = self.conversation()?.send_message(&message_json)?;
+        let raw = self.send_message(&message_json)?;
         self.drive_tool_loop(raw, host, &is_host_tool, consent, &mut on_tool, 0)
     }
 
@@ -256,7 +286,7 @@ impl ChatSession {
             rounds_used,
         } = resume;
         let tool_msg = tool_response_json(&call.name, &response, call.id.as_deref());
-        let mut raw = self.conversation()?.send_message(&tool_msg)?;
+        let mut raw = self.send_message(&tool_msg)?;
         let mut queue: VecDeque<ToolCall> = queued.into();
         while let Some(next) = queue.pop_front() {
             if is_host_tool(&next.name) {
@@ -277,7 +307,7 @@ impl ChatSession {
                 json!({ "error": "tool denied by consent policy", "tool": next.name })
             };
             let tool_msg = tool_response_json(&next.name, &response, next.id.as_deref());
-            raw = self.conversation()?.send_message(&tool_msg)?;
+            raw = self.send_message(&tool_msg)?;
         }
         self.drive_tool_loop(raw, host, &is_host_tool, consent, &mut on_tool, rounds_used)
     }
@@ -333,7 +363,7 @@ impl ChatSession {
                 };
                 eprintln!("[tool] {}", call.name);
                 let tool_msg = tool_response_json(&call.name, &response, call.id.as_deref());
-                raw = self.conversation()?.send_message(&tool_msg)?;
+                raw = self.send_message(&tool_msg)?;
             }
         }
     }
